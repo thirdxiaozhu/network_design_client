@@ -13,6 +13,7 @@ class Client:
         self.p.connect(('49.232.147.37', 8080))
         self.p.send(self.jsonProcessing(data).encode("utf-8"))
         msg = self.p.recv(1024)
+        print(msg)
         msg = json.loads(msg.decode("utf-8"))
         return msg
 
@@ -34,6 +35,19 @@ class Client:
 
         return msg.get("code")
 
+    def searchFriend(self, data):
+        self.p.send(self.jsonProcessing(data).encode("utf-8"))
+        msg = self.p.recv(1024)
+        msg = json.loads(msg.decode("utf-8"))
+
+        return msg
+
+    def getChatRecord(self, data):
+        self.p.send(self.jsonProcessing(data).encode("utf-8"))
+        msg = self.p.recv(1024)
+        msg = json.loads(msg.decode("utf-8"))
+
+        return msg
 
     def __del__(self):
         self.p.close()

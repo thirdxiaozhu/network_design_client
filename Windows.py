@@ -1,6 +1,6 @@
-from cgi import test
 import Register
 import List
+import ChatWindow
 import json
 from Protocol import Protocol
 import PyQt5.QtGui as QtGui
@@ -119,43 +119,37 @@ class FriendsList:
         self.signatureLabel.setText(self.ownerInfo.get("signature"))
         self.testButton.clicked.connect(lambda: self.deal())
         self.addFriendButton.clicked.connect(lambda: self.addFriend())
+        self.listWidget.itemDoubleClicked.connect(lambda: self.doubleClicked())
+        self.deal()
+
+    def doubleClicked(self):
+        item = self.listWidget.selectedItems()[0]
+        widget = self.listWidget.itemWidget(item)
+        targetAccount = widget.findChild(QLabel, "accountLabel").text()[2:-2]
+        widget = QDialog()
+        chatWindow = ChatWindow.Ui_Form()
+        chatWindow.setupUi(widget)
+        Chat(widget, self.ownerInfo.get("account"), targetAccount, self.client)
+        widget.show()
+        widget.exec_()
 
     def deal(self):
-        print("deal")
-        all_data = json.loads('[{"ship_name":"\u80e1\u5fb7","ship_country":"E\u56fd","ship_star":"5","ship_index":"1","ship_photo":"icon/1.png","ship_type":"\u6218\u5de1"},{"ship_name":"\u6d4b\u8bd5","ship_country":"E\u56fd","ship_star":"5","ship_index":"1","ship_photo":"icon/2.png","ship_type":"\u6218\u5de1"},{"ship_name":"\u6d4b\u8bd52","ship_country":"E\u56fd","ship_star":"5","ship_index":"1","ship_photo":"icon/3.png","ship_type":"\u6218\u5de1"},{"ship_name":"\u6d4b\u8bd53","ship_country":"E\u56fd","ship_star":"5","ship_index":"1","ship_photo":"icon/4.png","ship_type":"\u6218\u5de1"}]')
+        #有问题
+        dataDic = dict(msgType = Protocol.searchFriend, account = self.ownerInfo.get("account"))
+        all_data = self.client.searchFriend(dataDic)
+        
 
-        for ship_data in all_data:
+        if self.listWidget.count()>0:
+            for i in range(self.listWidget.count()-1,-1,-1):
+                self.listWidget.removeItemWidget(self.listWidget.takeItem(i))
+
+
+        for friend in all_data.get("friends"):
             item = QListWidgetItem()  # 创建QListWidgetItem对象
             item.setSizeHint(QSize(200, 50))  # 设置QListWidgetItem大小
-            widget = self.get_item_wight(ship_data)  # 调用上面的函数获取对应
+            widget = self.get_item_wight(friend)  # 调用上面的函数获取对应
             self.listWidget.addItem(item)  # 添加item
             self.listWidget.setItemWidget(item, widget)  # 为item设置widget
-
-    def get_item_wight(self,data):
-        # 读取属性
-        ship_name = data['ship_name']
-        ship_photo = data['ship_photo']
-        ship_type = data['ship_type']
-        # 总Widget
-        widget = QWidget()
-        # 总体横向布局
-        layout_main = QHBoxLayout()
-        map_l = QLabel()  # 头像显示
-        map_l.setFixedSize(40, 25)
-        maps = QPixmap(ship_photo).scaled(40, 25)
-        map_l.setPixmap(maps)
-        # 右边的纵向布局
-        layout_right = QVBoxLayout()
-        # 右下的的横向布局
-        layout_right_down = QHBoxLayout()  # 右下的横向布局
-        layout_right_down.addWidget(QLabel(ship_type))
-        # 按照从左到右, 从上到下布局添加
-        layout_main.addWidget(map_l)  # 最左边的头像
-        layout_right.addWidget(QLabel(ship_name))  # 右边的纵向布局
-        layout_right.addLayout(layout_right_down)  # 右下角横向布局
-        layout_main.addLayout(layout_right)  # 右边的布局
-        widget.setLayout(layout_main)  # 布局给wight
-        return widget  # 返回wight
 
     def addFriend(self):
         text, ok = QInputDialog().getText(QWidget(), '添加好友', '输入好友账号:')
@@ -164,12 +158,62 @@ class FriendsList:
             code = self.client.addFriend(dataDic)
             print(code)
             if code == 1000:
+                self.deal()
                 QMessageBox.information(None,"成功","添加成功",QMessageBox.Yes)
             elif code == 1001:
                 QMessageBox.warning(None ,"警告","用户不存在",QMessageBox.Yes)
             elif code == 1002:
                 QMessageBox.warning(None ,"警告","你们已经成为好友",QMessageBox.Yes )
 
-                
+    def get_item_wight(self,data):
+        # 读取属性
+        friend_name = data['nickname']
+        friend_photo = ""
+        friend_nickname = data['signature']
+        friend_account = data['account_2'] if data.__contains__('account_2') else data['account_1']
+        # 总Widget
+        widget = QWidget()
+        # 总体横向布局
+        map_l = QLabel()  # 头像显示
+        map_l.setFixedSize(40, 25)
+        maps = QPixmap(friend_photo).scaled(40, 25)
+        map_l.setPixmap(maps)
 
+        nameLabel = QLabel(friend_name)
+        nameLabel.setObjectName("nameLabel")
 
+        accountLabel = QLabel( "( " + friend_account + " )")
+        accountLabel.setObjectName("accountLabel")
+
+        layout_main = QHBoxLayout()
+        layout_right = QVBoxLayout()
+        layout_right_up = QHBoxLayout()  # 右下的横向布局
+        layout_right_down = QHBoxLayout()  # 右下的横向布局
+
+        # 按照从左到右, 从上到下布局添加
+        layout_main.addWidget(map_l)  # 最左边的头像
+        layout_main.addLayout(layout_right)  # 右边的布局
+
+        layout_right_up.addWidget(nameLabel)
+        layout_right_up.addWidget(accountLabel)
+        layout_right.addLayout(layout_right_up)  # 右边的纵向布局
+        
+        layout_right_down.addWidget(QLabel(friend_nickname))
+        layout_right.addLayout(layout_right_down)  # 右下角横向布局
+
+        widget.setLayout(layout_main)  # 布局给wight
+        return widget  # 返回wight
+
+class Chat:
+    def __init__(self, widget, ownerAccount, targetAccount, client) -> None:
+        self.widget = widget
+        self.ownerAccount = ownerAccount
+        self.targetAccount = targetAccount
+        self.client = client 
+        self.messageReceiver = widget.findChild(QTextEdit, "messageReceiver")
+        self.messageEditer = widget.findChild(QTextEdit, "messageEditer")
+        self.sendButton = widget.findChild(QPushButton, "sendButton")
+        self.closeButton = widget.findChild(QPushButton, "closeButton")
+
+    def initMessageRecord(self):
+        self.client.
