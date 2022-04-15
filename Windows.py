@@ -1,6 +1,6 @@
 from datetime import datetime
+import time
 from PIL import Image
-from numpy import broadcast
 import Register
 import List
 import ChatWindow
@@ -49,13 +49,14 @@ class LoginEvent(QtCore.QObject):
     def showupFriendList(self, msg):
         if msg.get("code") == 1000:
             self.mainWindow.hide()
+            print(msg)
 
             #如果登陆成功，启动epoll处理信息
             t = threading.Thread(target=self.client.initiateServer)
             t.start()
             self.client.registFileNo()
             #开启文件传输socket
-            self.client.filetrans.start()
+            self.client.filetrans.start(msg.get("fd"))
 
             widget = QDialog()
             listUi = List.Ui_Form()
@@ -66,6 +67,8 @@ class LoginEvent(QtCore.QObject):
             #self.mainWindow.show()  # 如果没有self.form.show()这一句，关闭Demo1界面后就会关闭程序
             self.setLogout()  # 退出登录
         else:
+            self.client.p.shutdown(2)
+            self.client.p.close()
             QMessageBox.warning(self.mainWindow, "警告",
                                 "用户名或密码错误", QMessageBox.Yes | QMessageBox.No)
 
@@ -153,7 +156,6 @@ class FriendsList(QObject):
         self.friendsNodes = []
         self.initComponent()
         self.initEvent()
-        self.getFriendNodes()
 
     #双击node打开对应聊天窗口
 
@@ -188,7 +190,6 @@ class FriendsList(QObject):
             self.listWidget.setItemWidget(item, widget)  # 为item设置widget
             self.friendsNodes.append(item)
 
-
     def broadcastLoginCallBack(self, dict):
         for item in self.friendsNodes:
             if item.friend_account == dict.get("account"):
@@ -209,6 +210,25 @@ class FriendsList(QObject):
             elif code == 1002:
                 QMessageBox.warning(None, "警告", "你们已经成为好友", QMessageBox.Yes)
 
+    #更新个人信息
+    def changeOwnInfo(self, headscul=None, nickname=None, signature=None):
+        if headscul is not None:
+            try:
+                #如果缓存中不存在这张图片文件，向服务器索取该文件
+                if not os.path.exists(headscul):
+                    self.client.getFile(headscul)
+                    headscul = "picture/default_headscul.jpg"
+
+                jpg = QtGui.QPixmap(headscul).scaled(
+                    self.headsculLabel.width(), self.headsculLabel.height())
+                self.headsculLabel.setPixmap(jpg)
+            except Exception as e:
+                print(e)
+        if nickname is not None:
+            self.nicknameLabel.setText(nickname)
+        if signature is not None:
+            self.signatureLabel.setText(signature)
+
     def showInfoWidget(self):
         form = QDialog()
         ui = PersonalInfo.Ui_Form()
@@ -223,8 +243,11 @@ class FriendsList(QObject):
         self.addFriendButton = self.form.findChild(QPushButton, "addFriendBtn")
         self.nicknameLabel = self.form.findChild(QLabel, "nicknameLabel")
         self.signatureLabel = self.form.findChild(QLabel, "signatureLabel")
-        self.nicknameLabel.setText(self.ownerInfo.get("nickname"))
-        self.signatureLabel.setText(self.ownerInfo.get("signature"))
+        self.headsculLabel = self.form.findChild(QLabel, "headsculLabel")
+        self.changeOwnInfo(headscul=self.ownerInfo.get("headscul"), nickname=self.ownerInfo.get(
+            "nickname"), signature=self.ownerInfo.get("signature"))
+        time.sleep(0.5)
+        self.getFriendNodes()
 
     def initEvent(self):
         self.infoButton.clicked.connect(lambda: self.showInfoWidget())
@@ -352,5 +375,12 @@ class PersonalInfoEvent:
         self.signatureEdit.setText(self.ownerInfo.get("signature"))
 
     def uploadHead(self):
-        imgName, imgType = QFileDialog.getOpenFileName(None, "打开图片", "/home/jiaxv/Pictures", "*.jpg;;*.png;;*.jpeg;;All Files(*)")
-        self.client.filetrans.putFilePath(imgName)
+        imgName, imgType = QFileDialog.getOpenFileName(
+            None, "打开图片", "/home/jiaxv/Pictures", "*.jpg;;*.png;;*.jpeg;;All Files(*)")
+        path = self.client.filetrans.copyIntoTemp(imgName)
+        self.client.filetrans.putFilePath(path)
+
+        dictData = dict(msgType=Protocol.HEADSCUL,
+                        account=self.ownerInfo.get("account"), filepath=path)
+
+        self.client.updateHead(dictData)

@@ -14,6 +14,8 @@ class Protocol:
     closeWindow = 7 
     sendFile = 8
     LOGOUT = 9
+    HEADSCUL = 11
+    GETFILE = 12
     def __init__(self) -> None:
         pass
 

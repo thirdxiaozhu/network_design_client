@@ -7,13 +7,12 @@ from PyQt5.QtWidgets import *
 import select
 import Protocol
 import os
-import FileTrans 
+import FileTrans
 import time
 
 
 class Client:
     def __init__(self):
-        self.p = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.epoll_fd = select.epoll()
         self.filetrans = FileTrans.FileSocket()
         self.addresses = {}
@@ -70,6 +69,7 @@ class Client:
             5: self.messageRecordEvent,
             6: self.getNewMessage,
             10: self.broadcastLogin,
+            11: self.updateHeadCallBack,
         }
 
         method = numbers.get(dict.get("msgType"))
@@ -79,6 +79,7 @@ class Client:
     #利用普通传输处理连接，如果成功那么再启用epoll
     def setupConnection(self, data, loginClass):
         self.loginClass = loginClass
+        self.p = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.p.connect(('49.232.147.37', 8080))
 
         self.p.send(self.jsonProcessing(data).encode())
@@ -88,6 +89,13 @@ class Client:
     def loginEvent(self, dict):
         self.ownerAccount = dict.get("account")
         self.loginClass.startUpFriendList.emit(dict)
+
+    def registFileNo(self):
+        try:
+            self.epoll_fd.register(
+                self.p.fileno(), select.EPOLLIN | select.EPOLLERR | select.EPOLLHUP)
+        except Exception as e:
+            print(e)
 
     def searchFriendEvent(self, dict):
         self.friendListClass.startUpFriendNodes.emit(dict)
@@ -104,7 +112,6 @@ class Client:
     def getNewMessage(self, dict):
         print(dict)
         self.messageRecordEvent(dict)
-
 
     def searchFriend(self, data, friendListClass):
         self.friendListClass = friendListClass
@@ -172,12 +179,26 @@ class Client:
     def broadcastLogin(self, dict):
         self.friendListClass.broadcastLoginSignal.emit(dict)
 
-    def registFileNo(self):
-        try:
-            self.epoll_fd.register(
-                self.p.fileno(), select.EPOLLIN | select.EPOLLERR | select.EPOLLHUP)
-        except Exception as e:
-            print(e)
+    def updateHead(self, dict):
+        self.datalist = self.jsonProcessing(dict)
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def updateHeadCallBack(self, dict):
+        if dict.get("code") == 1000:
+            self.friendListClass.changeOwnInfo(headscul=dict.get("filepath"))
+            #QMessageBox.information(None, "成功",
+            #                        "修改成功", QMessageBox.Yes)
+        else:
+            QMessageBox.warning(None, "警告",
+                                "修改失败", QMessageBox.Yes)
+                            
+    def getFile(self, filepath):
+        dictData = dict(msgType=Protocol.Protocol.GETFILE, filepath=filepath)
+        print(dictData)
+        self.datalist = self.jsonProcessing(dictData)
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
     def __del__(self):
         self.p.close()

@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>292</width>
-    <height>702</height>
+    <height>754</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -31,14 +31,26 @@
      <x>10</x>
      <y>10</y>
      <width>271</width>
-     <height>681</height>
+     <height>731</height>
     </rect>
    </property>
    <layout class="QVBoxLayout" name="verticalLayout">
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
-       <widget class="QLabel" name="label">
+       <widget class="QLabel" name="headsculLabel">
+        <property name="minimumSize">
+         <size>
+          <width>80</width>
+          <height>80</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>80</width>
+          <height>80</height>
+         </size>
+        </property>
         <property name="text">
          <string>TextLabel</string>
         </property>
@@ -129,7 +141,7 @@ QTabBar::tab{height:25}</string>
           <x>0</x>
           <y>0</y>
           <width>269</width>
-          <height>571</height>
+          <height>621</height>
          </rect>
         </property>
        </widget>
