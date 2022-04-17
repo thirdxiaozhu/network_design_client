@@ -5,19 +5,20 @@ import os
 import struct
 import Protocol
 
+
 class FileSocket:
     def __init__(self) -> None:
         self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.address = ("49.232.147.37", 8081)
+        self.waitFile = []
         self.filequeue = Queue()
-
 
     def start(self, fd):
         self.clientSocket.connect(self.address)
-        sendThread = Protocol.KThread(target=self.initSendTask, args=(fd,))
-        recvThread = Protocol.KThread(target=self.initRecvTask)
-        sendThread.start()
-        recvThread.start()
+        self.sendThread = Protocol.KThread(target=self.initSendTask, args=(fd,))
+        self.recvThread = Protocol.KThread(target=self.initRecvTask)
+        self.sendThread.start()
+        self.recvThread.start()
 
     def initRecvTask(self):
         while True:
@@ -27,17 +28,18 @@ class FileSocket:
             print(buf)
             if buf == "close".encode():
                 break
-            
+
             if buf:
                 filename, filesize = struct.unpack('128sl', buf)
                 print(filesize)
                 fn = filename.strip(b'\00')
                 fn = fn.decode()
-                print ('file new name is {0}, filesize if {1}'.format(str(fn),filesize))
+                print('file new name is {0}, filesize if {1}'.format(
+                    str(fn), filesize))
                 recvd_size = 0  # 定义已接收文件的大小
-                # 存储在该脚本所在目录下面 
+                # 存储在该脚本所在目录下面
                 fp = open('./' + str(fn), 'wb')
-                print ('start receiving...')
+                print('start receiving...')
                 # 将分批次传输的二进制流依次写入到文件
                 while not recvd_size == filesize:
                     if filesize - recvd_size > 1024:
@@ -50,6 +52,8 @@ class FileSocket:
                         print(len(data))
                         recvd_size = filesize
                     fp.write(data)
+                #传输完成后fn加入完成队列，等待操作
+                self.waitFile.append(fn)
                 fp.close()
                 print("传输完成")
 
@@ -66,21 +70,20 @@ class FileSocket:
                     fp = open(path, "rb")
                     bytes = fp.read()
 
-                    fhead = struct.pack('128sl', path.encode('utf-8'), len(bytes))
+                    fhead = struct.pack(
+                        '128sl', path.encode('utf-8'), len(bytes))
                     self.clientSocket.send(fhead)
 
                     chunks, chunk_size = len(bytes), 1024
-                    list = [bytes[i:i+chunk_size] for i in range(0, chunks, chunk_size) ]
+                    list = [bytes[i:i+chunk_size]
+                            for i in range(0, chunks, chunk_size)]
                     for i in list:
                         print(len(i))
                         self.clientSocket.send(i)
                 except Exception as e:
                     print(e)
                     break
-                
-        self.clientSocket.shutdown(2)
-        self.clientSocket.close()
-        print("连接已断开")
+
 
     def putFilePath(self, path):
         self.filequeue.put(path)
@@ -94,6 +97,16 @@ class FileSocket:
 
         return newFileName
 
+    def fileIsRecived(self, path):
+        if path in self.waitFile:
+            self.waitFile.remove(path)
+            return True
+        else:
+            return False
 
     def closeTrans(self):
+        self.sendThread.kill()
+        self.recvThread.kill()
+        self.clientSocket.shutdown(2)
         self.putFilePath("close")
+        self.clientSocket.close()

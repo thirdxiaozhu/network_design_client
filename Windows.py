@@ -1,6 +1,4 @@
-from datetime import datetime
 import time
-from PIL import Image
 import Register
 import List
 import ChatWindow
@@ -9,7 +7,6 @@ import threading
 import Dialogs
 import SubUnit
 import EmojiTable
-import base64
 import PersonalInfo
 from Protocol import *
 from PyQt5.QtWidgets import *
@@ -54,6 +51,7 @@ class LoginEvent(QtCore.QObject):
             #如果登陆成功，启动epoll处理信息
             t = threading.Thread(target=self.client.initiateServer)
             t.start()
+            #注册fileno，表示可以开始进行epoll
             self.client.registFileNo()
             #开启文件传输socket
             self.client.filetrans.start(msg.get("fd"))
@@ -147,6 +145,10 @@ class RegisterEvent:
 class FriendsList(QObject):
     startUpFriendNodes = QtCore.pyqtSignal(dict)
     broadcastLoginSignal = QtCore.pyqtSignal(dict)
+    fileRecivedSignal = QtCore.pyqtSignal(str, QLabel)
+    friendHeadsculSignal = QtCore.pyqtSignal(str, QLabel)
+    addFriendSignal = QtCore.pyqtSignal(dict)
+    deleteFriendSignal = QtCore.pyqtSignal(dict)
 
     def __init__(self, form, msg, client):
         super(FriendsList, self).__init__()
@@ -156,6 +158,7 @@ class FriendsList(QObject):
         self.friendsNodes = []
         self.initComponent()
         self.initEvent()
+        self.initInfos()
 
     #双击node打开对应聊天窗口
 
@@ -183,9 +186,13 @@ class FriendsList(QObject):
                 self.listWidget.removeItemWidget(self.listWidget.takeItem(i))
 
         for friend in all_data.get("friends"):
-            item = SubUnit.FriendListItem(friend)  # 创建QListWidgetItem对象
+            item = SubUnit.FriendListItem(
+                friend, self.client, self.fileRecivedSignal)  # 创建QListWidgetItem对象
             item.setSizeHint(QSize(200, 50))  # 设置QListWidgetItem大小
             widget = item.getItemWidget()  # 调用上面的函数获取对应
+
+            label = item.getHeadSculLabel()
+
             self.listWidget.addItem(item)  # 添加item
             self.listWidget.setItemWidget(item, widget)  # 为item设置widget
             self.friendsNodes.append(item)
@@ -201,14 +208,33 @@ class FriendsList(QObject):
             dataDic = dict(msgType=Protocol.addFriend,
                            account=self.ownerInfo.get("account"), target=text)
             code = self.client.addFriend(dataDic)
-            print(code)
-            if code == 1000:
-                self.deal()
-                QMessageBox.information(None, "成功", "添加成功", QMessageBox.Yes)
-            elif code == 1001:
-                QMessageBox.warning(None, "警告", "用户不存在", QMessageBox.Yes)
-            elif code == 1002:
-                QMessageBox.warning(None, "警告", "你们已经成为好友", QMessageBox.Yes)
+
+    def addFriendCallBack(self, dict):
+        code = dict.get("code")
+        if code == 1000:
+            self.getFriendNodes()
+            QMessageBox.information(None, "成功", "添加成功", QMessageBox.Yes)
+        elif code == 1001:
+            QMessageBox.warning(None, "警告", "用户不存在", QMessageBox.Yes)
+        elif code == 1002:
+            QMessageBox.warning(None, "警告", "你们已经成为好友", QMessageBox.Yes)
+
+    def deleteFriend(self):
+        item = self.listWidget.selectedItems()[0]
+        widget = self.listWidget.itemWidget(item)
+        #从好友列表node中截取账号，有待修改
+        targetAccount = widget.findChild(QLabel, "accountLabel").text()[2:-2]
+        dataDict = dict(msgType=Protocol.DELETEFRIEND, account=self.ownerInfo.get(
+            "account"), target=targetAccount)
+        self.client.deleteFriend(dataDict)
+
+    def deleteFriendCallBack(self, dict):
+        code = dict.get("code")
+        if code == 1000:
+            self.getFriendNodes()
+            QMessageBox.information(None, "成功", "删除成功", QMessageBox.Yes)
+        elif code == 1001:
+            QMessageBox.warning(None, "警告", "删除过程出现错误", QMessageBox.Yes)
 
     #更新个人信息
     def changeOwnInfo(self, headscul=None, nickname=None, signature=None):
@@ -216,12 +242,17 @@ class FriendsList(QObject):
             try:
                 #如果缓存中不存在这张图片文件，向服务器索取该文件
                 if not os.path.exists(headscul):
-                    self.client.getFile(headscul)
+                    if(headscul != ""):
+                        self.client.getFile(headscul)
+                        #文件接收线程
+                        WaitFileThreading(
+                            self.client, self.fileRecivedSignal, headscul, self.headsculLabel)
                     headscul = "picture/default_headscul.jpg"
 
                 jpg = QtGui.QPixmap(headscul).scaled(
                     self.headsculLabel.width(), self.headsculLabel.height())
                 self.headsculLabel.setPixmap(jpg)
+
             except Exception as e:
                 print(e)
         if nickname is not None:
@@ -237,6 +268,13 @@ class FriendsList(QObject):
         form.show()
         form.exec_()
 
+    #改变label的图片
+    def fileIsReceived(self, path, label):
+        #self.changeOwnInfo(headscul=path)
+        jpg = QtGui.QPixmap(path).scaled(
+            label.width(), label.height())
+        label.setPixmap(jpg)
+
     def initComponent(self):
         self.listWidget = self.form.findChild(QListWidget, "FriendsList")
         self.infoButton = self.form.findChild(QPushButton, "infoButton")
@@ -244,10 +282,9 @@ class FriendsList(QObject):
         self.nicknameLabel = self.form.findChild(QLabel, "nicknameLabel")
         self.signatureLabel = self.form.findChild(QLabel, "signatureLabel")
         self.headsculLabel = self.form.findChild(QLabel, "headsculLabel")
-        self.changeOwnInfo(headscul=self.ownerInfo.get("headscul"), nickname=self.ownerInfo.get(
-            "nickname"), signature=self.ownerInfo.get("signature"))
-        time.sleep(0.5)
-        self.getFriendNodes()
+        self.listWidget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.listWidget.customContextMenuRequested.connect(
+            self.customRightMenu)
 
     def initEvent(self):
         self.infoButton.clicked.connect(lambda: self.showInfoWidget())
@@ -255,6 +292,36 @@ class FriendsList(QObject):
         self.listWidget.itemDoubleClicked.connect(lambda: self.doubleClicked())
         self.startUpFriendNodes.connect(self.searchFriendCallBack)
         self.broadcastLoginSignal.connect(self.broadcastLoginCallBack)
+        self.fileRecivedSignal.connect(self.fileIsReceived)
+        self.addFriendSignal.connect(self.addFriendCallBack)
+        self.deleteFriendSignal.connect(self.deleteFriendCallBack)
+
+    def initInfos(self):
+        self.changeOwnInfo(headscul=self.ownerInfo.get("headscul"), nickname=self.ownerInfo.get(
+            "nickname"), signature=self.ownerInfo.get("signature"))
+        time.sleep(0.5)
+        self.getFriendNodes()
+
+    def customRightMenu(self, pos):
+        menu = QtWidgets.QMenu()
+        sendMessageAction = QAction(u'发送信息', self)
+        deleteFriendAction = QAction(u'删除好友', self)
+        sendMessageAction.triggered.connect(self.doubleClicked)
+        deleteFriendAction.triggered.connect(self.deleteFriend)
+        menu.addAction(sendMessageAction)
+        menu.addAction(deleteFriendAction)
+
+        menu.exec_(self.listWidget.mapToGlobal(pos))
+
+        #hitIndex = self.listWidget.indexAt(pos).column()
+        #if hitIndex > -1:
+        #	#获取item内容
+        #    name=self.listWidget.item(hitIndex).text()
+        #    action = menu.exec_(self.listWidget.mapToGlobal(pos))
+        #    if action == opt1:
+        #        pass
+        #    elif action == opt2:
+        #        pass
 
 
 #聊天窗口

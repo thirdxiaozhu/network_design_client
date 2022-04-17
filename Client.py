@@ -64,12 +64,13 @@ class Client:
         print(datas)
         dict = json.loads(datas)
         numbers = {
-            3: self.addFriend,
+            3: self.addFriendEvent,
             4: self.searchFriendEvent,
             5: self.messageRecordEvent,
             6: self.getNewMessage,
             10: self.broadcastLogin,
-            11: self.updateHeadCallBack,
+            11: self.updateHeadEvent,
+            13: self.deleteFriendEvent,
         }
 
         method = numbers.get(dict.get("msgType"))
@@ -163,11 +164,22 @@ class Client:
         os._exit(0)
 
     def addFriend(self, data):
-        self.p.send(self.jsonProcessing(data).encode("utf-8"))
-        msg = self.p.recv(1024)
-        msg = json.loads(msg.decode("utf-8"))
+        self.datalist = self.jsonProcessing(data)
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
-        return msg.get("code")
+    def addFriendEvent(self, dict):
+        print(dict)
+        self.friendListClass.addFriendSignal.emit(dict)
+
+    def deleteFriend(self, data):
+        self.datalist = self.jsonProcessing(data)
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def deleteFriendEvent(self, dict):
+        print(dict)
+        self.friendListClass.deleteFriendSignal.emit(dict)
 
     def getChatRecord(self, data):
         self.p.send(self.jsonProcessing(data).encode("utf-8"))
@@ -184,7 +196,7 @@ class Client:
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
-    def updateHeadCallBack(self, dict):
+    def updateHeadEvent(self, dict):
         if dict.get("code") == 1000:
             self.friendListClass.changeOwnInfo(headscul=dict.get("filepath"))
             #QMessageBox.information(None, "成功",
