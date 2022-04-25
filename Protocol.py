@@ -14,15 +14,20 @@ class Protocol:
     searchFriend = 4
     getMessageRecord = 5
     sendMessage = 6
-    closeWindow = 7
+    closeFriendWindow = 7
     sendFile = 8
     LOGOUT = 9
     HEADSCUL = 11
     GETFILE = 12
     DELETEFRIEND = 13
-
-    def __init__(self) -> None:
-        pass
+    SETGROUP = 14
+    GETGROUPS = 15
+    DELETEGROUP = 16
+    SENDGROUPMESSAGE = 17
+    GETGROUPMESSAGERECORD = 18
+    CLOSE_GROUP_WINDOW = 19
+    DISMISS_GROUP = 22
+    ADD_GROUP = 23
 
 
 class MessageFormat:
@@ -93,8 +98,8 @@ class KThread(threading.Thread):
 
 
 class WaitFileThreading:
-    def __init__(self, client, signal, path, label) -> None:
-        self.label = label
+    def __init__(self, client, signal, path, widget) -> None:
+        self.widget = widget
         threading.Thread(target=self.target, args=(
             client, signal, path)).start()
 
@@ -102,4 +107,4 @@ class WaitFileThreading:
         while True:
             if client.filetrans.fileIsRecived(path):
                 break
-        signal.emit(path, self.label)
+        signal.emit(path, self.widget)

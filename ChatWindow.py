@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'chatWindow.ui'
+# Form implementation generated from reading ui file 'ui/chatWindow.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.6
 #
@@ -18,7 +18,7 @@ class Ui_Form(object):
         Form.setMinimumSize(QtCore.QSize(653, 460))
         Form.setMaximumSize(QtCore.QSize(653, 460))
         self.verticalLayoutWidget = QtWidgets.QWidget(Form)
-        self.verticalLayoutWidget.setGeometry(QtCore.QRect(10, 10, 631, 441))
+        self.verticalLayoutWidget.setGeometry(QtCore.QRect(10, 10, 631, 442))
         self.verticalLayoutWidget.setObjectName("verticalLayoutWidget")
         self.verticalLayout = QtWidgets.QVBoxLayout(self.verticalLayoutWidget)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -45,8 +45,15 @@ class Ui_Form(object):
         self.pictureButton.setMaximumSize(QtCore.QSize(50, 16777215))
         self.pictureButton.setObjectName("pictureButton")
         self.horizontalLayout_2.addWidget(self.pictureButton)
-        spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        spacerItem1 = QtWidgets.QSpacerItem(10, 20, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_2.addItem(spacerItem1)
+        self.pushButton = QtWidgets.QPushButton(self.verticalLayoutWidget)
+        self.pushButton.setMinimumSize(QtCore.QSize(50, 0))
+        self.pushButton.setMaximumSize(QtCore.QSize(50, 16777215))
+        self.pushButton.setObjectName("pushButton")
+        self.horizontalLayout_2.addWidget(self.pushButton)
+        spacerItem2 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.horizontalLayout_2.addItem(spacerItem2)
         self.verticalLayout_2.addLayout(self.horizontalLayout_2)
         self.verticalLayout.addLayout(self.verticalLayout_2)
         self.messageEditer = QtWidgets.QTextEdit(self.verticalLayoutWidget)
@@ -64,14 +71,14 @@ class Ui_Form(object):
         self.verticalLayout_3.setObjectName("verticalLayout_3")
         self.horizontalLayout = QtWidgets.QHBoxLayout()
         self.horizontalLayout.setObjectName("horizontalLayout")
-        spacerItem2 = QtWidgets.QSpacerItem(30, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout.addItem(spacerItem2)
+        spacerItem3 = QtWidgets.QSpacerItem(30, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.horizontalLayout.addItem(spacerItem3)
         self.sendButton = QtWidgets.QPushButton(self.verticalLayoutWidget)
         self.sendButton.setMinimumSize(QtCore.QSize(100, 0))
         self.sendButton.setObjectName("sendButton")
         self.horizontalLayout.addWidget(self.sendButton)
-        spacerItem3 = QtWidgets.QSpacerItem(20, 20, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout.addItem(spacerItem3)
+        spacerItem4 = QtWidgets.QSpacerItem(20, 20, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
+        self.horizontalLayout.addItem(spacerItem4)
         self.closeButton = QtWidgets.QPushButton(self.verticalLayoutWidget)
         self.closeButton.setMinimumSize(QtCore.QSize(100, 0))
         self.closeButton.setObjectName("closeButton")
@@ -87,5 +94,6 @@ class Ui_Form(object):
         Form.setWindowTitle(_translate("Form", "Form"))
         self.emojiWidget.setText(_translate("Form", "😍"))
         self.pictureButton.setText(_translate("Form", "img"))
+        self.pushButton.setText(_translate("Form", "文件"))
         self.sendButton.setText(_translate("Form", "发送"))
         self.closeButton.setText(_translate("Form", "关闭"))

@@ -1,3 +1,4 @@
+from pickletools import optimize
 from queue import Queue
 import socket
 from PIL import Image
@@ -89,11 +90,19 @@ class FileSocket:
         self.filequeue.put(path)
         print(self.filequeue.qsize())
 
-    def copyIntoTemp(self, path):
+    def copyIntoTemp(self, path, compress=False):
         img = Image.open(path, mode="r")
         unique_hash = hash(str(img))
-        newFileName = "temp/%s.%s" % (unique_hash, img.format)
-        img.save(newFileName)
+
+        if compress:
+            if img.format == "PNG":
+                img = img.convert("RGB")
+                img.format = "JPEG"
+            newFileName = "temp/%s.%s" % (unique_hash, img.format)
+            img.save(newFileName, quality = 10, optimize=True)
+        else:
+            newFileName = "temp/%s.%s" % (unique_hash, img.format)
+            img.save(newFileName)
 
         return newFileName
 

@@ -114,7 +114,7 @@ QTabBar::tab{height:25}</string>
        <enum>QTabWidget::Rounded</enum>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <property name="iconSize">
        <size>
@@ -141,8 +141,21 @@ QTabBar::tab{height:25}</string>
           <x>0</x>
           <y>0</y>
           <width>269</width>
-          <height>621</height>
+          <height>571</height>
          </rect>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="addFriendBtn">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>580</y>
+          <width>269</width>
+          <height>26</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>添加好友</string>
         </property>
        </widget>
       </widget>
@@ -160,14 +173,33 @@ QTabBar::tab{height:25}</string>
          </rect>
         </property>
        </widget>
+       <widget class="QWidget" name="horizontalLayoutWidget">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>580</y>
+          <width>271</width>
+          <height>31</height>
+         </rect>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayout_2">
+         <item>
+          <widget class="QPushButton" name="addGroupBtn">
+           <property name="text">
+            <string>添加群</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="setGroupBtn">
+           <property name="text">
+            <string>新建群</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
       </widget>
-     </widget>
-    </item>
-    <item>
-     <widget class="QPushButton" name="addFriendBtn">
-      <property name="text">
-       <string>添加好友</string>
-      </property>
      </widget>
     </item>
     <item>

@@ -31,7 +31,7 @@
      <x>10</x>
      <y>10</y>
      <width>631</width>
-     <height>441</height>
+     <height>442</height>
     </rect>
    </property>
    <layout class="QVBoxLayout" name="verticalLayout">
@@ -109,6 +109,41 @@
           </property>
           <property name="text">
            <string>img</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer_5">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeType">
+           <enum>QSizePolicy::Minimum</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>10</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButton">
+          <property name="minimumSize">
+           <size>
+            <width>50</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>50</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>文件</string>
           </property>
          </widget>
         </item>

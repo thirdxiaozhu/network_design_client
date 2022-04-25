@@ -25,7 +25,7 @@
     </property>
     <layout class="QHBoxLayout" name="horizontalLayout">
      <item>
-      <widget class="QLabel" name="label">
+      <widget class="QLabel" name="headsculLabel">
        <property name="enabled">
         <bool>true</bool>
        </property>
@@ -69,7 +69,7 @@
          <item>
           <widget class="QLineEdit" name="accountEdit">
            <property name="text">
-            <string>123</string>
+            <string/>
            </property>
           </widget>
          </item>
@@ -93,7 +93,7 @@
             </sizepolicy>
            </property>
            <property name="text">
-            <string>123</string>
+            <string/>
            </property>
           </widget>
          </item>
@@ -111,14 +111,14 @@
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_3">
            <item>
-            <widget class="QCheckBox" name="checkBox">
+            <widget class="QCheckBox" name="savePasswordBox">
              <property name="text">
               <string>记住密码</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QCheckBox" name="checkBox_2">
+            <widget class="QCheckBox" name="autoLoginBox">
              <property name="text">
               <string>自动登录</string>
              </property>

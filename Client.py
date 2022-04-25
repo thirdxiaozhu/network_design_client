@@ -18,6 +18,7 @@ class Client:
         self.addresses = {}
         self.datalist = {}
         self.chatClasses = {}
+        self.groupChatClasses = {}
 
     #用一个子线程处理epoll
     def initiateServer(self):
@@ -71,6 +72,14 @@ class Client:
             10: self.broadcastLogin,
             11: self.updateHeadEvent,
             13: self.deleteFriendEvent,
+            14: self.setGroupEvent,
+            15: self.getGroupsEvent,
+            16: self.deleteGroupEvent,
+            18: self.groupMessageRecordEvent,
+            20: self.getNewGroupMessage,
+            21: self.setGroupMembers,
+            22: self.dismissGroupEvent,
+            23: self.addGroupEvent,
         }
 
         method = numbers.get(dict.get("msgType"))
@@ -98,24 +107,36 @@ class Client:
         except Exception as e:
             print(e)
 
-    def searchFriendEvent(self, dict):
-        self.friendListClass.startUpFriendNodes.emit(dict)
 
     def messageRecordEvent(self, dict):
         if dict.get("code") == 1000:
-            #if self.chatClass
             sender = dict.get("messages")[0].get("sender")
             recipient = dict.get("messages")[0].get("recipient")
             targetAccount = sender if self.ownerAccount == recipient else recipient
 
             self.chatClasses.get(targetAccount).getMessage.emit(dict)
 
+    def groupMessageRecordEvent(self, dict):
+        if dict.get("code") == 1000:
+            groupid = dict.get("messages")[0].get("groupid")
+            self.groupChatClasses.get(groupid).getMessage.emit(dict)
+
     def getNewMessage(self, dict):
-        print(dict)
         self.messageRecordEvent(dict)
+
+    def getNewGroupMessage(self, dict):
+        self.groupMessageRecordEvent(dict)
 
     def searchFriend(self, data, friendListClass):
         self.friendListClass = friendListClass
+        self.datalist = self.jsonProcessing(data)
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def searchFriendEvent(self, dict):
+        self.friendListClass.startUpFriendNodes.emit(dict)
+
+    def getGroups(self, data):
         self.datalist = self.jsonProcessing(data)
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
@@ -129,9 +150,21 @@ class Client:
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
+    def getGroupMessageRecord(self, data, groupChatClass):
+        target = data.get("target")
+        if not self.groupChatClasses.__contains__(target):
+            self.groupChatClasses[target] = groupChatClass
+
+        self.datalist = self.jsonProcessing(data)
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
     def closeChatWindow(self, data):
         target = data.get("target")
-        self.chatClasses.pop(target)
+        if data.get("msgType") == Protocol.Protocol.closeFriendWindow:
+            self.chatClasses.pop(target)
+        else:
+            self.groupChatClasses.pop(target)
 
         self.datalist = self.jsonProcessing(data)
         self.epoll_fd.modify(
@@ -141,6 +174,7 @@ class Client:
         self.datalist = self.jsonProcessing(data)
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
 
     def registConnection(self, data):
         self.p.connect(('49.232.147.37', 8080))
@@ -172,14 +206,38 @@ class Client:
         print(dict)
         self.friendListClass.addFriendSignal.emit(dict)
 
+    def addGroup(self, data):
+        self.datalist = self.jsonProcessing(data)
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def addGroupEvent(self, dict):
+        print(dict)
+        self.friendListClass.addGroupSignal.emit(dict)
+
     def deleteFriend(self, data):
         self.datalist = self.jsonProcessing(data)
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
     def deleteFriendEvent(self, dict):
-        print(dict)
         self.friendListClass.deleteFriendSignal.emit(dict)
+
+    def deleteGroup(self, data):
+        self.datalist = self.jsonProcessing(data)
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def deleteGroupEvent(self, data):
+        self.friendListClass.deleteGroupSignal.emit(data)
+
+    def dismissGroup(self, data):
+        self.datalist = self.jsonProcessing(data)
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def dismissGroupEvent(self, data):
+        self.friendListClass.dismissGroupSignal.emit(data)
 
     def getChatRecord(self, data):
         self.p.send(self.jsonProcessing(data).encode("utf-8"))
@@ -207,10 +265,28 @@ class Client:
                             
     def getFile(self, filepath):
         dictData = dict(msgType=Protocol.Protocol.GETFILE, filepath=filepath)
-        print(dictData)
         self.datalist = self.jsonProcessing(dictData)
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+
+    def setGroup(self, dict, setgroupclass):
+        self.setGroupClass = setgroupclass
+        self.datalist = self.jsonProcessing(dict)
+        print(dict)
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def setGroupMembers(self, dict):
+        if dict.get("code") == 1000:
+            groupid = dict.get("groupid")
+            self.groupChatClasses.get(groupid).setGroupMembersSignal.emit(dict)
+
+    def setGroupEvent(self, dict):
+        self.setGroupClass.resultSignal.emit(dict.get("code"))
+
+    def getGroupsEvent(self, dict):
+        self.friendListClass.startUpGroupNodes.emit(dict)
 
     def __del__(self):
         self.p.close()
