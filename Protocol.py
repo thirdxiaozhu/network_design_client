@@ -1,10 +1,10 @@
 import datetime
 import json
+import time
 from pydoc import cli
 import threading
 import sys
 from PyQt5 import QtWidgets, QtGui, QtCore
-from requests import patch
 
 
 class Protocol:
@@ -28,6 +28,7 @@ class Protocol:
     CLOSE_GROUP_WINDOW = 19
     DISMISS_GROUP = 22
     ADD_GROUP = 23
+    REQUEST_FILE = 24
 
 
 class MessageFormat:
@@ -98,13 +99,28 @@ class KThread(threading.Thread):
 
 
 class WaitFileThreading:
-    def __init__(self, client, signal, path, widget) -> None:
+    def __init__(self, client, signal, path, widget, form=MessageFormat.IMAGE) -> None:
         self.widget = widget
-        threading.Thread(target=self.target, args=(
-            client, signal, path)).start()
+        if form == MessageFormat.IMAGE:
+            threading.Thread(target=self.imgTarget, args=(
+                client, signal, path)).start()
+        else:
+            threading.Thread(target=self.fileTarget, args=(
+                client, signal, path)).start()
 
-    def target(self, client, signal, path):
+
+    def imgTarget(self, client, signal, path):
         while True:
             if client.filetrans.fileIsRecived(path):
                 break
         signal.emit(path, self.widget)
+
+    def fileTarget(self, client, signal, path):
+        while True:
+            process = client.filetrans.getFileProcess(path)
+            if process:
+                signal.emit(path, process, self.widget)
+                if process == 1.0:
+                    break
+
+            time.sleep(0.1)

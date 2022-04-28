@@ -16,6 +16,7 @@ from Client import Client
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5 import QtCore, QtWidgets
+from PIL import Image
 
 
 #登录窗口
@@ -498,6 +499,8 @@ class FriendsList(QObject):
 class Chat(QObject):
     #获取消息信号，绑定消息展示槽
     getMessage = QtCore.pyqtSignal(dict)
+    imageSingal = QtCore.pyqtSignal(str, QTextEdit)
+    fileReceiveSignal = QtCore.pyqtSignal(str, float, QtWidgets.QProgressBar)
 
     def __init__(self, widget, ownerAccount, targetAccount, client) -> None:
         super(Chat, self).__init__()
@@ -521,17 +524,25 @@ class Chat(QObject):
         self.sendButton = self.widget.findChild(QPushButton, "sendButton")
         self.closeButton = self.widget.findChild(QPushButton, "closeButton")
         self.emojiWidget = self.widget.findChild(QPushButton, "emojiWidget")
+        self.fileButton = self.widget.findChild(QPushButton, "fileButton")
         self.pictureButton = self.widget.findChild(
             QPushButton, "pictureButton")
 
         self.widget.targetAccount = self.targetAccount
         self.widget.client = self.client
 
+        self.messageReceiver.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.messageReceiver.customContextMenuRequested.connect(
+            self.itemCustomRightMenu)
+
     def initEvent(self):
         self.getMessage.connect(self.messageCallBack)
+        self.imageSingal.connect(self.fileIsReceived)
+        self.fileReceiveSignal.connect(self.fileReceiving)
         self.sendButton.clicked.connect(lambda: self.sendMessage())
         self.emojiWidget.clicked.connect(lambda: self.setupEmojiWidget())
         self.pictureButton.clicked.connect(lambda: self.chooseImg())
+        self.fileButton.clicked.connect(lambda: self.chooseFile())
 
     #发送消息
     def sendMessage(self):
@@ -544,13 +555,12 @@ class Chat(QObject):
     def messageCallBack(self, dict):
         for msg in dict.get("messages"):
             if msg.get("sender") == self.ownerAccount:
-                node = SubUnit.NodeItem("own", self.client)  # 调用上面的函数获取对应
+                item = SubUnit.NodeItem("own", self.client, self.imageSingal)  # 调用上面的函数获取对应
             else:
-                node = SubUnit.NodeItem("opposite", self.client)  # 调用上面的函数获取对应
+                item = SubUnit.NodeItem("opposite", self.client, self.imageSingal)  # 调用上面的函数获取对应
 
-            node.setMessage(msg)
-            widget = node.getWidget()
-            item = node.getItem()
+            item.setMessage(msg)
+            widget = item.getWidget()
 
             self.messageReceiver.addItem(item)  # 添加item
             self.messageReceiver.setItemWidget(item, widget)  # 为item设置widget
@@ -568,7 +578,7 @@ class Chat(QObject):
             None, "打开图片", "/home/jiaxv/Pictures", "*.jpg;;*.png;;*.jpeg;;All Files(*)")
 
         for img in imgNames:
-            path = self.client.filetrans.copyIntoTemp(img)
+            path = self.client.filetrans.copyImgIntoTemp(img)
             print(path)
             self.client.filetrans.putFilePath(path)
 
@@ -576,12 +586,73 @@ class Chat(QObject):
                            account=self.ownerAccount, target=self.targetAccount, message=path, form=MessageFormat.IMAGE)
             self.client.sendMessage(dataDic)
 
+    def chooseFile(self):
+        FileNames, type = QFileDialog.getOpenFileNames(
+            None, "选择文件", "/home/jiaxv", "All Files(*)")
+        print(FileNames)
+
+        for filepath in FileNames:
+            path = self.client.filetrans.copyFileIntoTemp(filepath)
+            self.client.filetrans.putFilePath(path)
+
+            dataDic = dict(msgType=Protocol.sendMessage,
+                           account=self.ownerAccount, target=self.targetAccount, message=path, form=MessageFormat.FILE)
+            self.client.sendMessage(dataDic)
+
+    def startFileReceive(self):
+        item = self.messageReceiver.selectedItems()[0]
+        item.fileProcessBar.show()
+        self.client.getFile(item.filePath)
+
+        WaitFileThreading(self.client, self.fileReceiveSignal,
+                          item.filePath, item.fileProcessBar, form=MessageFormat.FILE)
+
+    def fileReceiving(self, path, process, processBar):
+        processBar.setValue(int(process*100))
+        print("process", process)
+
+    def itemCustomRightMenu(self, pos):
+        menu = QtWidgets.QMenu()
+        receiveFileAction = QAction(u'接收文件', self)
+        receiveFileAction.triggered.connect(self.startFileReceive)
+
+        item = self.messageReceiver.selectedItems()[0]
+        #menu.addAction(receiveFileAction)
+        if item.form == MessageFormat.FILE:
+            menu.addAction(receiveFileAction)
+
+        menu.exec_(self.messageReceiver.mapToGlobal(pos))
+
+    #改变label的图片
+    def fileIsReceived(self, path, msgitem):
+        msgitem.img = Image.open(path)
+
+        currentWidth = msgitem.img.width
+        if currentWidth > 300:
+            currentHeight = msgitem.img.height * 300/msgitem.img.width
+            currentWidth = 300
+        else:
+            currentHeight = msgitem.img.height
+
+        #html标签根据width自适应大小
+        imgDiv = "<img src=%s width=%s/>" % (path, currentWidth)
+        msgitem.messageText.clear()
+        message = (msgitem.html % (msgitem.align, msgitem.color, msgitem.msg.get("sender"),
+                                msgitem.color, msgitem.msg.get("time"), imgDiv))
+
+        msgitem.messageText.setMinimumHeight(
+            msgitem.messageText.height() + currentHeight)
+        msgitem.setSizeHint(QSize(500, currentHeight))  # 设置QListWidgetItem大小
+        msgitem.messageText.append(message)
+
+
 #聊天窗口
 
 
 class GroupChat(QObject):
     getMessage = QtCore.pyqtSignal(dict)
     setGroupMembersSignal = QtCore.pyqtSignal(dict)
+    imageSingal = QtCore.pyqtSignal(str, QTextEdit)
 
     def __init__(self, widget, ownerAccount, groupAccount, client, groupMaster) -> None:
         super(GroupChat, self).__init__()
@@ -621,6 +692,7 @@ class GroupChat(QObject):
 
     def initEvent(self):
         self.getMessage.connect(self.messageCallBack)
+        self.imageSingal.connect(self.fileIsReceived)
         self.setGroupMembersSignal.connect(self.setGroupMembers)
         self.sendButton.clicked.connect(lambda: self.sendMessage())
         self.emojiWidget.clicked.connect(lambda: self.setupEmojiWidget())
@@ -638,16 +710,16 @@ class GroupChat(QObject):
     def messageCallBack(self, dict):
         for msg in dict.get("messages"):
             if msg.get("sender") == self.ownerAccount:
-                node = SubUnit.NodeItem("own", self.client)  # 调用上面的函数获取对应
+                item = SubUnit.NodeItem("own", self.client, self.imageSingal)  # 调用上面的函数获取对应
             else:
-                node = SubUnit.NodeItem("opposite", self.client)  # 调用上面的函数获取对应
+                item = SubUnit.NodeItem("opposite", self.client, self.imageSingal)  # 调用上面的函数获取对应
 
-            node.setMessage(msg)
-            widget = node.getWidget()
-            item = node.getItem()
+            item.setMessage(msg)
+            widget = item.getWidget()
 
             self.messageReceiver.addItem(item)  # 添加item
             self.messageReceiver.setItemWidget(item, widget)  # 为item设置widget
+
 
     def setupEmojiWidget(self):
         print(self.emojiWidget.text())
@@ -663,7 +735,7 @@ class GroupChat(QObject):
             None, "打开图片", "/home/jiaxv/Pictures", "*.jpg;;*.png;;*.jpeg;;All Files(*)")
 
         for img in imgNames:
-            path = self.client.filetrans.copyIntoTemp(img)
+            path = self.client.filetrans.copyImgIntoTemp(img)
             self.client.filetrans.putFilePath(path)
 
             dataDic = dict(msgType=Protocol.SENDGROUPMESSAGE,
@@ -694,6 +766,28 @@ class GroupChat(QObject):
         else:
             dataDict = dict(msgType=Protocol.DISMISS_GROUP, target=self.targetAccount)
             self.client.dismissGroup(dataDict)
+
+    #改变label的图片
+    def fileIsReceived(self, path, msgitem):
+        msgitem.img = Image.open(path)
+
+        currentWidth = msgitem.img.width
+        if currentWidth > 300:
+            currentHeight = msgitem.img.height * 300/msgitem.img.width
+            currentWidth = 300
+        else:
+            currentHeight = msgitem.img.height
+
+        #html标签根据width自适应大小
+        imgDiv = "<img src=%s width=%s/>" % (path, currentWidth)
+        msgitem.messageText.clear()
+        message = (msgitem.html % (msgitem.align, msgitem.color, msgitem.msg.get("sender"),
+                                msgitem.color, msgitem.msg.get("time"), imgDiv))
+
+        msgitem.messageText.setMinimumHeight(
+            msgitem.messageText.height() + currentHeight)
+        msgitem.setSizeHint(QSize(500, currentHeight))  # 设置QListWidgetItem大小
+        msgitem.messageText.append(message)
 
 class PersonalInfoEvent:
     def __init__(self, form, client, ownerInfo) -> None:
@@ -727,7 +821,7 @@ class PersonalInfoEvent:
     def uploadHead(self):
         imgName, imgType = QFileDialog.getOpenFileName(
             None, "打开图片", "/home/jiaxv/Pictures", "*.jpg;;*.png;;*.jpeg;;All Files(*)")
-        path = self.client.filetrans.copyIntoTemp(imgName, compress=True)
+        path = self.client.filetrans.copyImgIntoTemp(imgName, compress=True)
         self.client.filetrans.putFilePath(path)
 
         dictData = dict(msgType=Protocol.HEADSCUL,
@@ -771,7 +865,7 @@ class SetGroupEvent(QObject):
         self.imagePath = imgName
 
     def sendRequest(self):
-        path = self.client.filetrans.copyIntoTemp(
+        path = self.client.filetrans.copyImgIntoTemp(
             self.imagePath, compress=True)
         self.client.filetrans.putFilePath(path)
 

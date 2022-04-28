@@ -5,6 +5,7 @@ from PIL import Image
 import os
 import struct
 import Protocol
+import shutil
 
 
 class FileSocket:
@@ -12,6 +13,7 @@ class FileSocket:
         self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.address = ("49.232.147.37", 8081)
         self.waitFile = []
+        self.process = {}
         self.filequeue = Queue()
 
     def start(self, fd):
@@ -41,18 +43,17 @@ class FileSocket:
                 # 存储在该脚本所在目录下面
                 fp = open('./' + str(fn), 'wb')
                 print('start receiving...')
+                self.process[fn] = 0
                 # 将分批次传输的二进制流依次写入到文件
                 while not recvd_size == filesize:
                     if filesize - recvd_size > 1024:
                         data = self.clientSocket.recv(1024)
                         recvd_size += len(data)
-                        print(recvd_size)
                     else:
                         data = self.clientSocket.recv(filesize - recvd_size)
-                        print(filesize - recvd_size)
-                        print(len(data))
                         recvd_size = filesize
                     fp.write(data)
+                    self.process[fn] = round(recvd_size/filesize, 4)
                 #传输完成后fn加入完成队列，等待操作
                 self.waitFile.append(fn)
                 fp.close()
@@ -63,6 +64,7 @@ class FileSocket:
         while True:
             print("阻塞")
             path = self.filequeue.get()
+            print(path)
             if path == "close":
                 self.clientSocket.send(path.encode())
                 break
@@ -90,7 +92,7 @@ class FileSocket:
         self.filequeue.put(path)
         print(self.filequeue.qsize())
 
-    def copyIntoTemp(self, path, compress=False):
+    def copyImgIntoTemp(self, path, compress=False):
         img = Image.open(path, mode="r")
         unique_hash = hash(str(img))
 
@@ -106,12 +108,28 @@ class FileSocket:
 
         return newFileName
 
+    def copyFileIntoTemp(self, path):
+        dstpath = "temp/"
+        if not os.path.isfile(path):
+            print ("%s not exist!"%(path))
+        else:
+            fpath,fname=os.path.split(path)             # 分离文件名和路径
+            if not os.path.exists(dstpath):
+                os.makedirs(dstpath)                       # 创建路径
+            shutil.copy(path, dstpath + fname)          # 复制文件
+
+        return dstpath + fname
+
     def fileIsRecived(self, path):
         if path in self.waitFile:
             self.waitFile.remove(path)
             return True
         else:
             return False
+
+    def getFileProcess(self, path):
+        return self.process.get(path)
+
 
     def closeTrans(self):
         self.sendThread.kill()

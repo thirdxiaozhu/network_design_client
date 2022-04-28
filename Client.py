@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-import imp
 import json
 from queue import Queue
 import socket
@@ -16,7 +14,7 @@ class Client:
         self.epoll_fd = select.epoll()
         self.filetrans = FileTrans.FileSocket()
         self.addresses = {}
-        self.datalist = {}
+        self.datalist = Queue()
         self.chatClasses = {}
         self.groupChatClasses = {}
 
@@ -48,13 +46,15 @@ class Client:
         self.handleReceived(data)
 
     def writeEvent(self):
-        sendLen = 0
-        while True:
-            print(self.datalist)
-            sendLen += self.p.send(
-                (self.datalist[sendLen:]).encode())
-            if sendLen == len(self.datalist.encode()):
-                break
+        while self.datalist.qsize() > 0:
+            sendLen = 0
+            while True:
+                msg = self.datalist.get()
+                print(msg)
+                sendLen += self.p.send(
+                    (msg[sendLen:]).encode())
+                if sendLen == len(msg.encode()):
+                    break
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLET | select.EPOLLERR | select.EPOLLHUP)
 
@@ -129,7 +129,7 @@ class Client:
 
     def searchFriend(self, data, friendListClass):
         self.friendListClass = friendListClass
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -137,7 +137,7 @@ class Client:
         self.friendListClass.startUpFriendNodes.emit(dict)
 
     def getGroups(self, data):
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -146,7 +146,7 @@ class Client:
         if not self.chatClasses.__contains__(target):
             self.chatClasses[target] = chatClass
 
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -155,7 +155,7 @@ class Client:
         if not self.groupChatClasses.__contains__(target):
             self.groupChatClasses[target] = groupChatClass
 
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -166,12 +166,12 @@ class Client:
         else:
             self.groupChatClasses.pop(target)
 
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
     def sendMessage(self, data):
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -190,15 +190,16 @@ class Client:
         pass
 
     def setLogout(self, data):
-        self.datalist = self.jsonProcessing(data)
-        self.p.send(self.datalist.encode())
+        #self.datalist.put(self.jsonProcessing(data))
+        #立即发送
+        self.p.send(self.jsonProcessing(data).encode())
         #关闭文件传输socket
         self.filetrans.closeTrans()
         time.sleep(1)
         os._exit(0)
 
     def addFriend(self, data):
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -207,7 +208,7 @@ class Client:
         self.friendListClass.addFriendSignal.emit(dict)
 
     def addGroup(self, data):
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -216,7 +217,7 @@ class Client:
         self.friendListClass.addGroupSignal.emit(dict)
 
     def deleteFriend(self, data):
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -224,7 +225,7 @@ class Client:
         self.friendListClass.deleteFriendSignal.emit(dict)
 
     def deleteGroup(self, data):
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -232,7 +233,7 @@ class Client:
         self.friendListClass.deleteGroupSignal.emit(data)
 
     def dismissGroup(self, data):
-        self.datalist = self.jsonProcessing(data)
+        self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -250,7 +251,7 @@ class Client:
         self.friendListClass.broadcastLoginSignal.emit(dict)
 
     def updateHead(self, dict):
-        self.datalist = self.jsonProcessing(dict)
+        self.datalist.put(self.jsonProcessing(dict))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
@@ -265,14 +266,14 @@ class Client:
                             
     def getFile(self, filepath):
         dictData = dict(msgType=Protocol.Protocol.GETFILE, filepath=filepath)
-        self.datalist = self.jsonProcessing(dictData)
+        self.datalist.put(self.jsonProcessing(dictData))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
 
     def setGroup(self, dict, setgroupclass):
         self.setGroupClass = setgroupclass
-        self.datalist = self.jsonProcessing(dict)
+        self.datalist.put(self.jsonProcessing(dict))
         print(dict)
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)

@@ -9,15 +9,14 @@ from PyQt5 import QtCore, QtWidgets, QtGui
 from PyQt5.QtWidgets import *
 
 
-class NodeItem(QObject):
+class NodeItem(QtWidgets.QListWidgetItem):
     html = '<div align=%s> <font color=%s>%s   </font><font color=%s>( %s )<br></font> <font color=\"#000000\">%s</font></div>'
-    imageSingal = QtCore.pyqtSignal(str, QTextEdit)
 
-    def __init__(self, flag, client) -> None:
+    def __init__(self, flag, client, imageSingal) -> None:
         super(NodeItem, self).__init__()
         self.client = client
-        self.item = QListWidgetItem()  # 创建QListWidgetItem对象
-        self.horizontalLayoutWidget = QtWidgets.QWidget()
+        self.imageSingal = imageSingal
+
         self.initComponents()
         if flag == "own":
             self.widget = self.ownWidget()
@@ -25,6 +24,7 @@ class NodeItem(QObject):
             self.widget = self.oppositeWidget()
 
     def initComponents(self):
+        self.horizontalLayoutWidget = QtWidgets.QWidget()
         self.friend_photo = ""
         self.horizontalLayoutWidget.setGeometry(QtCore.QRect(20, 60, 501, 61))
         self.horizontalLayoutWidget.setObjectName("horizontalLayoutWidget")
@@ -34,6 +34,10 @@ class NodeItem(QObject):
         self.horizontalLayout.setObjectName("horizontalLayout")
         self.friendphoto = QtWidgets.QLabel(self.horizontalLayoutWidget)
         self.friendphoto.setObjectName("friendphoto")
+        self.verticalLayout = QtWidgets.QVBoxLayout()
+        self.verticalLayout.setContentsMargins(-1, -1, 0, -1)
+        self.verticalLayout.setSpacing(6)
+        self.verticalLayout.setObjectName("verticalLayout")
         self.messageText = QtWidgets.QTextEdit(self.horizontalLayoutWidget)
         self.messageText.setMinimumSize(QtCore.QSize(300, 50))
         self.messageText.setMaximumSize(QtCore.QSize(300, 1000))
@@ -47,20 +51,30 @@ class NodeItem(QObject):
         self.spacerItem = QtWidgets.QSpacerItem(
             40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.messageText.setStyleSheet("background-color:transparent;")
+        self.messageText.setFrameStyle(QFrame.NoFrame)
         #self.horizontalLayoutWidget.setStyleSheet("border: 1px solid black;")
         self.messageText.mouseDoubleClickEvent = self.doubleClickEvent
-        self.imageSingal.connect(self.fileIsReceived)
+        self.verticalLayout.addWidget(self.messageText)
+        self.fileProcessBar = QtWidgets.QProgressBar(self.horizontalLayoutWidget)
+        self.fileProcessBar.setProperty("value", 0)
+        self.fileProcessBar.setObjectName("fileProcessBar")
+        self.verticalLayout.addWidget(self.fileProcessBar)
+        self.fileProcessBar.hide()
+
+
+
+        #self.imageSingal.connect(self.fileIsReceived)
 
     def oppositeWidget(self):
         self.horizontalLayout.addWidget(self.friendphoto)
-        self.horizontalLayout.addWidget(self.messageText)
+        self.horizontalLayout.addLayout(self.verticalLayout)
         self.horizontalLayout.addItem(self.spacerItem)
         self.color = "#0000FF"
         self.align = "left"
 
     def ownWidget(self):
         self.horizontalLayout.addItem(self.spacerItem)
-        self.horizontalLayout.addWidget(self.messageText)
+        self.horizontalLayout.addLayout(self.verticalLayout)
         self.horizontalLayout.addWidget(self.friendphoto)
         self.color = "#00CC00"
         self.align = "right"
@@ -73,7 +87,7 @@ class NodeItem(QObject):
         if self.form == MessageFormat.NORMAL:
             message = (self.html % (self.align, self.color, msg.get("sender"),
                                     self.color, msg.get("time"), msg.get("message")))
-            self.item.setSizeHint(QSize(500, itemheight)
+            self.setSizeHint(QSize(500, int(itemheight))
                                   )  # 设置QListWidgetItem大小
 
         elif self.form == MessageFormat.IMAGE:
@@ -83,7 +97,7 @@ class NodeItem(QObject):
                 self.client.getFile(self.imgPath)
                 #文件接收线程
                 WaitFileThreading(
-                    self.client, self.imageSingal, self.imgPath, self.messageText)
+                    self.client, self.imageSingal, self.imgPath, self)
 
                 message = (self.html % (self.align, self.color, msg.get("sender"),
                                         self.color, msg.get("time"), ""))
@@ -96,7 +110,6 @@ class NodeItem(QObject):
                     currentWidth = 300
                 else:
                     currentHeight = self.img.height
-                    print(currentHeight)
 
                 #html标签根据width自适应大小
                 imgDiv = "<img src=%s width=%s/>" % (
@@ -105,11 +118,20 @@ class NodeItem(QObject):
                                         self.color, msg.get("time"), imgDiv))
 
                 self.messageText.setMinimumHeight(
-                    self.messageText.height() + currentHeight)
+                    int(self.messageText.height() + currentHeight))
                 self.messageText.setMaximumHeight(
-                    self.messageText.height() + currentHeight)
+                    int(self.messageText.height() + currentHeight))
                 # 设置QListWidgetItem大小
-                self.item.setSizeHint(QSize(500, currentHeight))
+                self.setSizeHint(QSize(500, int(currentHeight)))
+
+        elif self.form == MessageFormat.FILE:
+            self.filePath = msg.get("message")
+            self.filename = self.filePath.split("/")[-1]
+            innermsg = "<font color='red'>文件,请右键保存   </font>"
+            message = (self.html % (self.align, self.color, msg.get("sender"),
+                                    self.color, msg.get("time"), innermsg + self.filename))
+            self.setSizeHint(QSize(500, int(itemheight)))  # 设置QListWidgetItem大小
+            #self.fileProcessBar.show()
 
         self.messageText.append(message)
 
@@ -136,31 +158,6 @@ class NodeItem(QObject):
 
     def getWidget(self):
         return self.horizontalLayoutWidget
-
-    def getItem(self):
-        return self.item
-
-    #改变label的图片
-    def fileIsReceived(self, path, textedit):
-        self.img = Image.open(path)
-
-        currentWidth = self.img.width
-        if currentWidth > 300:
-            currentHeight = self.img.height * 300/self.img.width
-            currentWidth = 300
-        else:
-            currentHeight = self.img.height
-
-        #html标签根据width自适应大小
-        imgDiv = "<img src=%s width=%s/>" % (path, currentWidth)
-        self.messageText.clear()
-        message = (self.html % (self.align, self.color, self.msg.get("sender"),
-                                self.color, self.msg.get("time"), imgDiv))
-
-        self.messageText.setMinimumHeight(
-            self.messageText.height() + currentHeight)
-        self.item.setSizeHint(QSize(500, currentHeight))  # 设置QListWidgetItem大小
-        self.messageText.append(message)
 
 
 class EmojiTab:
