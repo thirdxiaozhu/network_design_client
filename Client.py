@@ -17,6 +17,7 @@ class Client:
         self.datalist = Queue()
         self.chatClasses = {}
         self.groupChatClasses = {}
+        self.groupFileClasses = {}
 
     #用一个子线程处理epoll
     def initiateServer(self):
@@ -43,7 +44,7 @@ class Client:
 
     def receiveEvent(self):
         data = self.p.recv(8192)
-        self.handleReceived(data)
+        self.handleReceived(data.decode())
 
     def writeEvent(self):
         while self.datalist.qsize() > 0:
@@ -62,29 +63,39 @@ class Client:
         pass
 
     def handleReceived(self, datas):
-        print(datas)
-        dict = json.loads(datas)
-        numbers = {
-            3: self.addFriendEvent,
-            4: self.searchFriendEvent,
-            5: self.messageRecordEvent,
-            6: self.getNewMessage,
-            10: self.broadcastLogin,
-            11: self.updateHeadEvent,
-            13: self.deleteFriendEvent,
-            14: self.setGroupEvent,
-            15: self.getGroupsEvent,
-            16: self.deleteGroupEvent,
-            18: self.groupMessageRecordEvent,
-            20: self.getNewGroupMessage,
-            21: self.setGroupMembers,
-            22: self.dismissGroupEvent,
-            23: self.addGroupEvent,
-        }
+        print(datas,type(datas))
+        #防止粘包（多个json串在一个字符串里）
+        dec = json.JSONDecoder()
+        pos = 0
+        while not pos == len(str(datas)):
+            dict, json_len = dec.raw_decode(str(datas)[pos:])
+            pos += json_len
+            #cdict = json.loads(j)
+            numbers = {
+                3: self.addFriendEvent,
+                4: self.searchFriendEvent,
+                5: self.messageRecordEvent,
+                6: self.getNewMessage,
+                10: self.broadcastLogin,
+                11: self.updateHeadEvent,
+                13: self.deleteFriendEvent,
+                14: self.setGroupEvent,
+                15: self.getGroupsEvent,
+                16: self.deleteGroupEvent,
+                18: self.groupMessageRecordEvent,
+                20: self.getNewGroupMessage,
+                21: self.setGroupMembers,
+                22: self.dismissGroupEvent,
+                23: self.addGroupEvent,
+                26: self.sendGroupFileEvent,
+                27: self.getGroupFileEvent,
+                28: self.downloadGroupFileEvent,
+                29: self.groupLogin,
+            }
 
-        method = numbers.get(dict.get("msgType"))
-        if method:
-            method(dict)
+            method = numbers.get(dict.get("msgType"))
+            if method:
+                method(dict)
 
     #利用普通传输处理连接，如果成功那么再启用epoll
     def setupConnection(self, data, loginClass):
@@ -170,6 +181,9 @@ class Client:
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
+    def closeGroupFileWindow(self, groupid):
+        self.groupFileClasses.pop(groupid)
+
     def sendMessage(self, data):
         self.datalist.put(self.jsonProcessing(data))
         self.epoll_fd.modify(
@@ -189,12 +203,12 @@ class Client:
     def sendFile(self, fileLine):
         pass
 
-    def setLogout(self, data):
+    def setLogout(self, data, type):
         #self.datalist.put(self.jsonProcessing(data))
         #立即发送
         self.p.send(self.jsonProcessing(data).encode())
         #关闭文件传输socket
-        self.filetrans.closeTrans()
+        self.filetrans.closeTrans(type)
         time.sleep(1)
         os._exit(0)
 
@@ -288,6 +302,60 @@ class Client:
 
     def getGroupsEvent(self, dict):
         self.friendListClass.startUpGroupNodes.emit(dict)
+
+    def changeStatus(self, dict):
+        self.datalist.put(self.jsonProcessing(dict))
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def sendGroupFile(self, dict, groupFileClass):
+        target = dict.get("groupid")
+        #if not self.groupFileClasses.__contains__(target):
+        #    self.groupFileClasses[target] = groupFileClass
+
+        self.datalist.put(self.jsonProcessing(dict))
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def sendGroupFileEvent(self, dict):
+        if dict.get("code") == 1000:
+            groupid = dict.get("groupid")
+            self.groupFileClasses.get(groupid).uploadSignal.emit(dict)
+
+    def getGroupFile(self, dict, groupFileClass):
+        target = dict.get("groupid")
+        if not self.groupFileClasses.__contains__(target):
+            self.groupFileClasses[target] = groupFileClass
+
+        self.datalist.put(self.jsonProcessing(dict))
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def getGroupFileEvent(self, dict):
+        target = dict.get("groupid")
+        fileClass = self.groupFileClasses.get(target)
+        fileClass.getFileSignal.emit(dict.get("files"))
+
+    def downloadGroupFile(self, dict):
+        self.datalist.put(self.jsonProcessing(dict))
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def downloadGroupFileEvent(self, dict):
+        groupid = dict.get("groupid")
+        if self.groupFileClasses.__contains__(groupid):
+            self.groupFileClasses.get(groupid).downloadSignal.emit(dict)
+
+    def groupLogin(self, dict):
+        groupid = dict.get("groupid")
+        if self.groupChatClasses.__contains__(groupid):
+            groupclass = self.groupChatClasses.get(groupid)
+            for count in range(groupclass.groupMemberList.count()):
+                item = groupclass.groupMemberList.item(count)
+                if item.member_account == dict.get("account"):
+                    item.changeLoginState(dict.get("flag"))
+
+
 
     def __del__(self):
         self.p.close()

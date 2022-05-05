@@ -238,9 +238,14 @@ class FriendListItem(QtWidgets.QListWidgetItem):
         return self.widget  # 返回wight
 
     def changeLoginState(self, flag):
+        self.friend_isonline = flag
         label = self.widget.findChild(QLabel, "nameLabel")
-        if flag:
+        if flag == Status.ONLINE:
             color = "green"
+        elif flag == Status.BUSY:
+            color = "blue"
+        elif flag == Status.LEAVE:
+            color = "pink"
         else:
             color = "red"
 
@@ -377,15 +382,11 @@ class GroupMembersItem(QtWidgets.QListWidgetItem):
         #layout_right_down = QHBoxLayout()  # 右下的横向布局
 
         # 按照从左到右, 从上到下布局添加
-        #layout_main.addWidget(self.headsculLabel)  # 最左边的头像
         layout_main.addLayout(layout_right)  # 右边的布局
 
         layout_right_up.addWidget(nameLabel)
         layout_right_up.addWidget(accountLabel)
         layout_right.addLayout(layout_right_up)  # 右边的纵向布局
-
-        #layout_right_down.addWidget(QLabel(self.friend_signature))
-        #layout_right.addLayout(layout_right_down)  # 右下角横向布局
 
         self.widget.setLayout(layout_main)  # 布局给wight
 
@@ -396,10 +397,12 @@ class GroupMembersItem(QtWidgets.QListWidgetItem):
         if flag:
             color = "green"
         else:
+            color = "black"
+        if self.groupchatwindow.groupMaster == self.member_account:
             color = "red"
 
         label.setText("<font color=%s face='黑体' size=4>%s<font>" %
-                      (color, self.friend_name))
+                      (color, self.member_name))
 
     #改变label的图片
     def fileIsReceived(self, path, label):

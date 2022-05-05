@@ -19,6 +19,7 @@ def main():
     ui = Ui_MainForm.Ui_MainWindow()
     ui.setupUi(mainWindow)
     LoginEvent(mainWindow, ui)
+    mainWindow.setWindowTitle("登录")
     mainWindow.show()
     app.exec_()
     sys.exit()

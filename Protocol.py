@@ -29,12 +29,32 @@ class Protocol:
     DISMISS_GROUP = 22
     ADD_GROUP = 23
     REQUEST_FILE = 24
+    CHANGE_STATUS = 25
+    SEND_GROUP_FILE = 26
+    GET_GROUP_FILE = 27
+    DOWNLOAD_GROUP_FILE = 28
 
 
 class MessageFormat:
     NORMAL = 1
     IMAGE = 2
     FILE = 3
+
+class Status:
+    OFFLINE = 0
+    ONLINE = 1
+    BUSY = 2
+    INVISIBLE = 3
+    LEAVE = 4
+
+    status = {
+        0: "离线",
+        1: "在线",
+        2: "忙碌",
+        3: "离线",
+        4: "离开",
+    }
+
 
 
 class DateEncoder(json.JSONEncoder):

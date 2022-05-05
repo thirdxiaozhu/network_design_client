@@ -41,13 +41,18 @@ class FileSocket:
                     str(fn), filesize))
                 recvd_size = 0  # 定义已接收文件的大小
                 # 存储在该脚本所在目录下面
+                dir = str(fn).split("/")
+                path = '/'.join(dir[:-1])
+                if not os.path.exists(path):
+                    os.mkdir(path)                       # 创建路径
+
                 fp = open('./' + str(fn), 'wb')
                 print('start receiving...')
                 self.process[fn] = 0
                 # 将分批次传输的二进制流依次写入到文件
                 while not recvd_size == filesize:
                     if filesize - recvd_size > 1024:
-                        data = self.clientSocket.recv(1024)
+                        data = self.clientSocket.recv(8192)
                         recvd_size += len(data)
                     else:
                         data = self.clientSocket.recv(filesize - recvd_size)
@@ -108,8 +113,12 @@ class FileSocket:
 
         return newFileName
 
-    def copyFileIntoTemp(self, path):
-        dstpath = "temp/"
+    def copyFileIntoTemp(self, path, groupid = None):
+        if groupid:
+            dstpath = "temp/%s/" % groupid
+            #dstpath = "temp/"
+        else:
+            dstpath = "temp/"
         if not os.path.isfile(path):
             print ("%s not exist!"%(path))
         else:
@@ -131,9 +140,10 @@ class FileSocket:
         return self.process.get(path)
 
 
-    def closeTrans(self):
-        self.sendThread.kill()
-        self.recvThread.kill()
-        self.clientSocket.shutdown(2)
-        self.putFilePath("close")
-        self.clientSocket.close()
+    def closeTrans(self, type):
+        if not type:
+            self.sendThread.kill()
+            self.recvThread.kill()
+            self.clientSocket.shutdown(2)
+            self.putFilePath("close")
+            self.clientSocket.close()
