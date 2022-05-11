@@ -89,7 +89,20 @@
        </spacer>
       </item>
       <item>
-       <widget class="QLineEdit" name="passwordEdit"/>
+       <widget class="QLineEdit" name="passwordEdit">
+        <property name="inputMask">
+         <string/>
+        </property>
+        <property name="echoMode">
+         <enum>QLineEdit::Password</enum>
+        </property>
+        <property name="placeholderText">
+         <string>不填写默认不变</string>
+        </property>
+        <property name="clearButtonEnabled">
+         <bool>false</bool>
+        </property>
+       </widget>
       </item>
      </layout>
     </item>

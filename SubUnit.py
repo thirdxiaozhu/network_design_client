@@ -164,6 +164,7 @@ class EmojiTab:
     def __init__(self, widget, chatWindow) -> None:
         self.widget = widget
         self.chatWindow = chatWindow
+        self.widget.setWindowTitle("emoji")
         self.table = widget.findChild(QtWidgets.QTableWidget, "emojitable")
         self.table.itemClicked.connect(lambda: self.itemClick())
 
@@ -413,3 +414,46 @@ class GroupMembersItem(QtWidgets.QListWidgetItem):
 
     def getHeadSculLabel(self):
         return self.headsculLabel
+
+
+class AdminListItem(QtWidgets.QListWidgetItem):
+
+    def __init__(self, account, client, signal) -> None:
+        super(AdminListItem, self).__init__()
+        self.client = client
+        self.signal = signal
+        self.account = account
+
+    def getItemWidget(self):
+        # 总Widget
+        self.widget = QWidget()
+        # 总体横向布局
+
+        checkBox = QCheckBox()
+        checkBox.setObjectName("checkbox")
+
+        accountLabel = QLabel(self.account)
+        accountLabel.setObjectName("accountLabel")
+
+        print(accountLabel.text())
+
+        layout_main = QHBoxLayout()
+
+        # 按照从左到右, 从上到下布局添加
+        layout_main.addWidget(accountLabel)  # 最左边的头像
+        layout_main.addWidget(checkBox)  # 最左边的头像
+        self.widget.setLayout(layout_main)  # 布局给wight
+
+        return self.widget  # 返回wight
+
+    #改变label的图片
+
+    def fileIsReceived(self, path, label):
+        #self.changeOwnInfo(headscul=path)
+        jpg = QtGui.QPixmap(path).scaled(
+            label.width(), label.height())
+        label.setPixmap(jpg)
+
+    def getHeadSculLabel(self):
+        return self.headsculLabel
+

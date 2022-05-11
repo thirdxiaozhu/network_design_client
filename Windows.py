@@ -1,4 +1,4 @@
-import imp
+import hashlib
 import time
 import Register
 import List
@@ -45,7 +45,7 @@ class LoginEvent(QtCore.QObject):
         self.password = self.passwordLine.text()
 
         dataDic = dict(msgType=Protocol.Login,
-                       account=self.account, password=self.password)
+                       account=self.account, password_hash=hashlib.md5(self.password.encode("utf-8")).hexdigest())
 
         self.client.setupConnection(dataDic, self)
 
@@ -87,15 +87,11 @@ class LoginEvent(QtCore.QObject):
 
     def showupFriendList(self, msg):
         if msg.get("code") == 1000 and msg.get("type") == 0:
-
             self.setLocalProfile(msg.get("headscul"))
-
             self.mainWindow.hide()
-            print(msg)
-            #如果登陆成功，启动epoll处理信息
-            t = threading.Thread(target=self.client.initiateServer)
-            t.start()
             #注册fileno，表示可以开始进行epoll
+            #如果登陆成功，启动epoll处理信息
+            threading.Thread(target=self.client.initiateServer).start()
             self.client.registFileNo()
             #开启文件传输socket
             self.client.filetrans.start(msg.get("fd"))
@@ -109,12 +105,14 @@ class LoginEvent(QtCore.QObject):
             self.setLogout()  # 退出登录
 
         elif msg.get("code") == 1000 and msg.get("type") == 1:
-            print("This is admin")
             self.mainWindow.hide()
+            #如果登陆成功，启动epoll处理信息
+            threading.Thread(target=self.client.initiateServer).start()
+            self.client.registFileNo()
             widget = QDialog()
             adminUi = AdminWidget.Ui_Form()
             adminUi.setupUi(widget)
-            #FriendsList(widget, msg, self.client)
+            AdminWindow(widget, msg, self.client)
             widget.show()
             widget.exec_()
             self.setLogout(type=1)  # 退出登录
@@ -123,6 +121,7 @@ class LoginEvent(QtCore.QObject):
             self.client.p.close()
             QMessageBox.warning(self.mainWindow, "警告",
                                 "用户名或密码错误", QMessageBox.Yes | QMessageBox.No)
+            return
 
     #注册
 
@@ -131,12 +130,12 @@ class LoginEvent(QtCore.QObject):
         form = QDialog()
         ui = Register.Ui_Form()
         ui.setupUi(form)
-        RegisterEvent(self.mainWindow, form)
+        RegisterEvent(self.mainWindow, form, self.client)
         form.show()
         form.exec_()
         self.mainWindow.show()
 
-    def setLogout(self, type = None):
+    def setLogout(self, type=None):
         dataDic = dict(msgType=Protocol.LOGOUT,
                        account=self.account, type=type if type else 0)
         self.client.setLogout(dataDic, type)
@@ -167,9 +166,10 @@ class LoginEvent(QtCore.QObject):
 
 #注册窗口
 class RegisterEvent:
-    def __init__(self, father, ui) -> None:
+    def __init__(self, father, ui, client) -> None:
         self.father = father
         self.ui = ui
+        self.client = client
         self.id = self.ui.findChild(QLineEdit, "idEdit")
         self.password = self.ui.findChild(QLineEdit, "passwordEdit")
         self.confirm = self.ui.findChild(QLineEdit, "confirmEdit")
@@ -184,10 +184,12 @@ class RegisterEvent:
 
     def submitRegist(self):
         if self.confirm.text() == self.password.text():
+            password_hash = hashlib.md5(self.password.text().encode("utf-8"))
             dataDic = dict(msgType=Protocol.Regist, id=self.id.text(
-            ), password=self.password.text(), nickname=self.nickname.text())
-            client = Client()
-            res = client.registConnection(dataDic)
+            ), password_hash=password_hash.hexdigest(), nickname=self.nickname.text())
+
+            #client = Client()
+            res = self.client.registConnection(dataDic)
             if res == 1000:
                 QMessageBox.information(self.ui, "成功", "添加成功", QMessageBox.Yes)
                 self.cancleRegist()
@@ -239,8 +241,10 @@ class FriendsList(QObject):
             widget = Dialogs.ChatDialog()
             chatWindow = ChatWindow.Ui_Form()
             chatWindow.setupUi(widget)
-            Chat(widget, self.ownerInfo.get("account"), targetAccount, self.client)
-            widget.setWindowTitle(Status.status.get(item.friend_isonline))
+            Chat(widget, self.ownerInfo.get(
+                "account"), targetAccount, self.client)
+            self.friendTitleChange(item, widget)
+            #widget.setWindowTitle(item.friend_name + Status.status.get())
             self.friendChatWidgets[targetAccount] = widget
             widget.show()
             widget.exec_()
@@ -258,7 +262,7 @@ class FriendsList(QObject):
             chatWindow = GroupChatWindow.Ui_Form()
             chatWindow.setupUi(widget)
             GroupChat(widget, self.ownerInfo.get(
-                "account"), targetAccount, self.client, item.group_master)
+                "account"), targetAccount, self.client, item.group_master, item.group_name)
             self.groupChatWidgets[targetAccount] = widget
             widget.show()
             widget.exec_()
@@ -318,7 +322,7 @@ class FriendsList(QObject):
                 item.changeLoginState(dict.get("flag"))
                 #更改标题栏对应好友状态
                 if self.friendChatWidgets.__contains__(item.friend_account):
-                    self.friendChatWidgets.get(item.friend_account).setWindowTitle(Status.status.get(dict.get("flag")))
+                    self.friendTitleChange(item, self.friendChatWidgets.get(item.friend_account))
 
     def addFriend(self):
         text, ok = QInputDialog().getText(QWidget(), '添加好友', '输入好友账号:')
@@ -422,7 +426,8 @@ class FriendsList(QObject):
                             self.client, self.headsculSignal, headscul, self.infoButton)
                     headscul = "picture/default_headscul.jpg"
 
-                self.infoButton.setStyleSheet("QPushButton{border-image: url(%s)}" % headscul)  # 设置背景图片，设置后一直存在
+                self.infoButton.setStyleSheet(
+                    "QPushButton{border-image: url(%s)}" % headscul)  # 设置背景图片，设置后一直存在
 
             except Exception as e:
                 print(e)
@@ -447,11 +452,16 @@ class FriendsList(QObject):
 
     #改变label的图片
     def headsculReceived(self, path, infoButton):
-        infoButton.setStyleSheet("QPushButton{border-image: url(%s)}" % path)  # 设置背景图片，设置后一直存在
-        
+        infoButton.setStyleSheet(
+            "QPushButton{border-image: url(%s)}" % path)  # 设置背景图片，设置后一直存在
+
     def statusChange(self):
-        msg = dict(msgType = Protocol.CHANGE_STATUS, account=self.ownerInfo.get("account"), status = self.statusBox.currentIndex()+1)
+        msg = dict(msgType=Protocol.CHANGE_STATUS, account=self.ownerInfo.get(
+            "account"), status=self.statusBox.currentIndex()+1)
         self.client.changeStatus(msg)
+
+    def friendTitleChange(self, item, widget):
+        widget.setWindowTitle(item.friend_name + "-" + Status.status.get(item.friend_isonline))
 
     def initComponent(self):
         self.form.setWindowTitle("列表")
@@ -561,24 +571,28 @@ class Chat(QObject):
         self.messageEditer = self.widget.findChild(QTextEdit, "messageEditer")
         self.sendButton = self.widget.findChild(QPushButton, "sendButton")
         self.closeButton = self.widget.findChild(QPushButton, "closeButton")
-        self.emojiWidget = self.widget.findChild(QPushButton, "emojiWidget")
+        self.emojiWidgetBtn = self.widget.findChild(QPushButton, "emojiWidget")
         self.fileButton = self.widget.findChild(QPushButton, "fileButton")
         self.pictureButton = self.widget.findChild(
             QPushButton, "pictureButton")
 
-        self.widget.targetAccount = self.targetAccount
-        self.widget.client = self.client
-
         self.messageReceiver.setContextMenuPolicy(Qt.CustomContextMenu)
         self.messageReceiver.customContextMenuRequested.connect(
             self.itemCustomRightMenu)
+
+        self.emojiWidget = QDialog()
+
+        self.widget.targetAccount = self.targetAccount
+        self.widget.client = self.client
+        self.widget.emojiWidget = self.emojiWidget
+
 
     def initEvent(self):
         self.getMessage.connect(self.messageCallBack)
         self.imageSingal.connect(self.fileIsReceived)
         self.fileReceiveSignal.connect(self.fileReceiving)
         self.sendButton.clicked.connect(lambda: self.sendMessage())
-        self.emojiWidget.clicked.connect(lambda: self.setupEmojiWidget())
+        self.emojiWidgetBtn.clicked.connect(lambda: self.setupEmojiWidget())
         self.pictureButton.clicked.connect(lambda: self.chooseImg())
         self.fileButton.clicked.connect(lambda: self.chooseFile())
 
@@ -593,9 +607,11 @@ class Chat(QObject):
     def messageCallBack(self, dict):
         for msg in dict.get("messages"):
             if msg.get("sender") == self.ownerAccount:
-                item = SubUnit.NodeItem("own", self.client, self.imageSingal)  # 调用上面的函数获取对应
+                item = SubUnit.NodeItem(
+                    "own", self.client, self.imageSingal)  # 调用上面的函数获取对应
             else:
-                item = SubUnit.NodeItem("opposite", self.client, self.imageSingal)  # 调用上面的函数获取对应
+                item = SubUnit.NodeItem(
+                    "opposite", self.client, self.imageSingal)  # 调用上面的函数获取对应
 
             item.setMessage(msg)
             widget = item.getWidget()
@@ -604,12 +620,11 @@ class Chat(QObject):
             self.messageReceiver.setItemWidget(item, widget)  # 为item设置widget
 
     def setupEmojiWidget(self):
-        emojiWidget = QDialog()
         chatWindow = EmojiTable.Ui_Form()
-        chatWindow.setupUi(emojiWidget)
-        SubUnit.EmojiTab(emojiWidget, self)
-        emojiWidget.show()
-        emojiWidget.exec_()
+        chatWindow.setupUi(self.emojiWidget)
+        SubUnit.EmojiTab(self.emojiWidget, self)
+        self.emojiWidget.show()
+        self.emojiWidget.exec_()
 
     def chooseImg(self):
         imgNames, imgType = QFileDialog.getOpenFileNames(
@@ -676,7 +691,7 @@ class Chat(QObject):
         imgDiv = "<img src=%s width=%s/>" % (path, currentWidth)
         msgitem.messageText.clear()
         message = (msgitem.html % (msgitem.align, msgitem.color, msgitem.msg.get("sender"),
-                                msgitem.color, msgitem.msg.get("time"), imgDiv))
+                                   msgitem.color, msgitem.msg.get("time"), imgDiv))
 
         msgitem.messageText.setMinimumHeight(
             msgitem.messageText.height() + currentHeight)
@@ -690,26 +705,35 @@ class Chat(QObject):
 class GroupChat(QObject):
     getMessage = QtCore.pyqtSignal(dict)
     setGroupMembersSignal = QtCore.pyqtSignal(dict)
+    removeMemberSignal = QtCore.pyqtSignal()
     imageSingal = QtCore.pyqtSignal(str, QTextEdit)
 
-    def __init__(self, widget, ownerAccount, groupAccount, client, groupMaster) -> None:
+    def __init__(self, widget, ownerAccount, groupAccount, client, groupMaster, groupName) -> None:
         super(GroupChat, self).__init__()
         self.widget = widget
         self.ownerAccount = ownerAccount
         self.targetAccount = groupAccount
         self.groupMaster = groupMaster
+        self.groupName = groupName
         self.isMaster = True if ownerAccount == groupMaster else False
         self.client = client
         self.initComponent()
         self.initEvent()
         self.initMessageRecord()
+        self.getGroupMembers()
 
     def initMessageRecord(self):
         dataDic = dict(msgType=Protocol.GETGROUPMESSAGERECORD,
                        account=self.ownerAccount, target=self.targetAccount)
         self.client.getGroupMessageRecord(dataDic, self)
 
+    def getGroupMembers(self):
+        dataDic = dict(msgType=Protocol.GET_GROUP_MEMBERS,
+                       account=self.ownerAccount, target=self.targetAccount)
+        self.client.getGroupMembers(dataDic)
+
     def initComponent(self):
+        self.widget.setWindowTitle(self.groupName)
         self.messageReceiver = self.widget.findChild(
             QListWidget, "messageList")
         self.groupMemberList = self.widget.findChild(
@@ -717,24 +741,33 @@ class GroupChat(QObject):
         self.messageEditer = self.widget.findChild(QTextEdit, "messageEditer")
         self.sendButton = self.widget.findChild(QPushButton, "sendButton")
         self.closeButton = self.widget.findChild(QPushButton, "closeButton")
-        self.emojiWidget = self.widget.findChild(QPushButton, "emojiWidget")
-        self.quitGroupButton = self.widget.findChild(QPushButton, "quitGroupButton")
-        self.groupInfoButton = self.widget.findChild(QPushButton, "groupInfoButton")
-        self.groupFileButton = self.widget.findChild(QPushButton, "groupFileButton")
+        self.emojiWidgetButton = self.widget.findChild(QPushButton, "emojiWidget")
+        self.quitGroupButton = self.widget.findChild(
+            QPushButton, "quitGroupButton")
+        self.groupInfoButton = self.widget.findChild(
+            QPushButton, "groupInfoButton")
+        self.groupFileButton = self.widget.findChild(
+            QPushButton, "groupFileButton")
         self.pictureButton = self.widget.findChild(
             QPushButton, "pictureButton")
 
-        self.widget.targetAccount = self.targetAccount
-        self.widget.client = self.client
         if self.isMaster:
             self.quitGroupButton.setText("解散此群")
+
+        self.emojiWidget = QDialog()
+        self.fileWidget = QDialog()
+        self.widget.targetAccount = self.targetAccount
+        self.widget.client = self.client
+        self.widget.emojiWidget = self.emojiWidget
+        self.widget.fileWidget = self.fileWidget
 
     def initEvent(self):
         self.getMessage.connect(self.messageCallBack)
         self.imageSingal.connect(self.fileIsReceived)
-        self.setGroupMembersSignal.connect(self.setGroupMembers)
+        self.setGroupMembersSignal.connect(self.setGroupMembersEvent)
+        self.removeMemberSignal.connect(self.removeMemberEvent)
         self.sendButton.clicked.connect(lambda: self.sendMessage())
-        self.emojiWidget.clicked.connect(lambda: self.setupEmojiWidget())
+        self.emojiWidgetButton.clicked.connect(lambda: self.setupEmojiWidget())
         self.pictureButton.clicked.connect(lambda: self.chooseImg())
         self.groupFileButton.clicked.connect(lambda: self.setFileWidget())
         self.quitGroupButton.clicked.connect(lambda: self.quitGroup())
@@ -748,15 +781,20 @@ class GroupChat(QObject):
         removeMemberAction = QAction(u'移除此群', self)
         removeMemberAction.triggered.connect(self.removeMember)
 
-        #menu.addAction(receiveFileAction)
-        if self.groupMaster == self.ownerAccount:
+        item = self.groupMemberList.selectedItems()[0]
+        if self.groupMaster == self.ownerAccount and item.member_account != self.groupMaster:
             menu.addAction(removeMemberAction)
 
         menu.exec_(self.groupMemberList.mapToGlobal(pos))
 
     def removeMember(self):
         item = self.groupMemberList.selectedItems()[0]
-        print(item.member_account)
+        dataDict = dict(msgType=Protocol.DELETEGROUP,
+                        account=item.member_account, target=self.targetAccount)
+        self.client.deleteGroup(dataDict)
+
+    def removeMemberEvent(self):
+        self.getGroupMembers()
 
     #发送消息
     def sendMessage(self):
@@ -769,9 +807,11 @@ class GroupChat(QObject):
     def messageCallBack(self, dict):
         for msg in dict.get("messages"):
             if msg.get("sender") == self.ownerAccount:
-                item = SubUnit.NodeItem("own", self.client, self.imageSingal)  # 调用上面的函数获取对应
+                item = SubUnit.NodeItem(
+                    "own", self.client, self.imageSingal)  # 调用上面的函数获取对应
             else:
-                item = SubUnit.NodeItem("opposite", self.client, self.imageSingal)  # 调用上面的函数获取对应
+                item = SubUnit.NodeItem(
+                    "opposite", self.client, self.imageSingal)  # 调用上面的函数获取对应
 
             item.setMessage(msg)
             widget = item.getWidget()
@@ -779,15 +819,12 @@ class GroupChat(QObject):
             self.messageReceiver.addItem(item)  # 添加item
             self.messageReceiver.setItemWidget(item, widget)  # 为item设置widget
 
-
     def setupEmojiWidget(self):
-        print(self.emojiWidget.text())
-        emojiWidget = QDialog()
         chatWindow = EmojiTable.Ui_Form()
-        chatWindow.setupUi(emojiWidget)
-        SubUnit.EmojiTab(emojiWidget, self)
-        emojiWidget.show()
-        emojiWidget.exec_()
+        chatWindow.setupUi(self.emojiWidget)
+        SubUnit.EmojiTab(self.emojiWidget, self)
+        self.emojiWidget.show()
+        self.emojiWidget.exec_()
 
     def chooseImg(self):
         imgNames, imgType = QFileDialog.getOpenFileNames(
@@ -801,7 +838,7 @@ class GroupChat(QObject):
                            account=self.ownerAccount, target=self.targetAccount, message=path, form=MessageFormat.IMAGE)
             self.client.sendMessage(dataDic)
 
-    def setGroupMembers(self, dict):
+    def setGroupMembersEvent(self, dict):
         if self.groupMemberList.count() > 0:
             for i in range(self.groupMemberList.count()-1, -1, -1):
                 self.groupMemberList.removeItemWidget(
@@ -820,10 +857,12 @@ class GroupChat(QObject):
     def quitGroup(self):
         self.widget.close()
         if self.isMaster:
-            dataDict = dict(msgType=Protocol.DELETEGROUP, account=self.ownerAccount, target=self.targetAccount)
+            dataDict = dict(msgType=Protocol.DELETEGROUP,
+                            account=self.ownerAccount, target=self.targetAccount)
             self.client.deleteGroup(dataDict)
         else:
-            dataDict = dict(msgType=Protocol.DISMISS_GROUP, target=self.targetAccount)
+            dataDict = dict(msgType=Protocol.DISMISS_GROUP,
+                            target=self.targetAccount)
             self.client.dismissGroup(dataDict)
 
     #改变label的图片
@@ -841,7 +880,7 @@ class GroupChat(QObject):
         imgDiv = "<img src=%s width=%s/>" % (path, currentWidth)
         msgitem.messageText.clear()
         message = (msgitem.html % (msgitem.align, msgitem.color, msgitem.msg.get("sender"),
-                                msgitem.color, msgitem.msg.get("time"), imgDiv))
+                                   msgitem.color, msgitem.msg.get("time"), imgDiv))
 
         msgitem.messageText.setMinimumHeight(
             msgitem.messageText.height() + currentHeight)
@@ -849,17 +888,19 @@ class GroupChat(QObject):
         msgitem.messageText.append(message)
 
     def setFileWidget(self):
-        widget = QDialog()
         fileWindow = GroupFileWindow.Ui_Form()
-        fileWindow.setupUi(widget)
-        GroupFile(widget, self.ownerAccount, self.targetAccount, self.client)
-        widget.show()
-        widget.exec_()
+        fileWindow.setupUi(self.fileWidget)
+        GroupFile(self.fileWidget, self.ownerAccount, self.targetAccount, self.client)
+        self.fileWidget.show()
+        self.fileWidget.exec_()
         self.client.closeGroupFileWindow(self.targetAccount)
-        
 
-class PersonalInfoEvent:
+
+class PersonalInfoEvent(QObject):
+    resultSignal = QtCore.pyqtSignal(int)
+
     def __init__(self, form, client, ownerInfo) -> None:
+        super(PersonalInfoEvent, self).__init__()
         self.form = form
         self.client = client
         self.ownerInfo = ownerInfo
@@ -877,13 +918,13 @@ class PersonalInfoEvent:
         self.cancelButton = self.form.findChild(QPushButton, "cancelButton")
 
     def initEvent(self):
+        self.resultSignal.connect(self.saveProfileCallBack)
         self.pictureButton.clicked.connect(lambda: self.uploadHead())
-        self.confirmButton.clicked.connect(lambda: self.closeWidget(1))
+        self.confirmButton.clicked.connect(lambda: self.saveProfile())
         self.cancelButton.clicked.connect(lambda: self.closeWidget(0))
 
     def initInfos(self):
         self.accountLabel.setText(self.ownerInfo.get("account"))
-        self.passwordEdit.setText(self.ownerInfo.get("password"))
         self.nicknameEdit.setText(self.ownerInfo.get("nickname"))
         self.signatureEdit.setText(self.ownerInfo.get("signature"))
 
@@ -897,6 +938,24 @@ class PersonalInfoEvent:
                         account=self.ownerInfo.get("account"), filepath=path)
 
         self.client.updateHead(dictData)
+
+    def saveProfile(self):
+        password = self.passwordEdit.text() if self.passwordEdit.text() else None
+        if password:
+            password_hash = hashlib.md5(password.encode("utf-8")).hexdigest()
+        else:
+            password_hash = ""
+        dictData = dict(msgType=Protocol.SAVE_PROFILE,
+                        account=self.ownerInfo.get("account"), nickname=self.nicknameEdit.text(), signature=self.signatureEdit.text(), password_hash=password_hash)
+
+        self.client.saveProfile(dictData, self)
+        #self.closeWidget(1)
+
+    def saveProfileCallBack(self, code):
+        if code == 1000:
+            self.closeWidget(1)
+        else:
+            self.closeWidget(0)
 
     def closeWidget(self, flag):
         if flag == 1:
@@ -954,6 +1013,7 @@ class SetGroupEvent(QObject):
     def closeWidget(self):
         self.form.close()
 
+
 class GroupFile(QObject):
     uploadSignal = QtCore.pyqtSignal(dict)
     downloadSignal = QtCore.pyqtSignal(dict)
@@ -971,17 +1031,22 @@ class GroupFile(QObject):
         self.initFileTable()
 
     def initComponent(self):
+        self.form.setWindowTitle("群文件")
         self.fileTable = self.form.findChild(QTableWidget, "fileTable")
-        self.uploadButton = self.form.findChild(QPushButton, "upLoadFileButton")
-        self.downloadButton = self.form.findChild(QPushButton, "downloadButton")
+        self.uploadButton = self.form.findChild(
+            QPushButton, "upLoadFileButton")
+        self.downloadButton = self.form.findChild(
+            QPushButton, "downloadButton")
 
-        self.fileTable.horizontalHeader().resizeSection(0,10) #设置第一列的宽度
-        self.fileTable.horizontalHeader().resizeSection(1,150) 
-        self.fileTable.horizontalHeader().resizeSection(2,40) 
-        self.fileTable.horizontalHeader().resizeSection(3,120) 
-        self.fileTable.horizontalHeader().setSectionResizeMode(4,QHeaderView.Stretch)#设置第五列宽度自动调整，充满屏幕
-        self.fileTable.horizontalHeader().setSectionsClickable(False) #可以禁止点击表头的列
-        self.fileTable.setEditTriggers(QAbstractItemView.NoEditTriggers) #设置表格不可更改
+        self.fileTable.horizontalHeader().resizeSection(0, 10)  # 设置第一列的宽度
+        self.fileTable.horizontalHeader().resizeSection(1, 150)
+        self.fileTable.horizontalHeader().resizeSection(2, 40)
+        self.fileTable.horizontalHeader().resizeSection(3, 120)
+        self.fileTable.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.Stretch)  # 设置第五列宽度自动调整，充满屏幕
+        self.fileTable.horizontalHeader().setSectionsClickable(False)  # 可以禁止点击表头的列
+        self.fileTable.setEditTriggers(
+            QAbstractItemView.NoEditTriggers)  # 设置表格不可更改
         self.fileTable.setShowGrid(False)
 
     def initEvent(self):
@@ -993,16 +1058,16 @@ class GroupFile(QObject):
         self.downloadButton.clicked.connect(lambda: self.downloadFiles())
 
     def initFileTable(self):
-        dictData = dict(msgType = Protocol.GET_GROUP_FILE, groupid = self.groupAccount)
+        dictData = dict(msgType=Protocol.GET_GROUP_FILE,
+                        groupid=self.groupAccount)
         self.client.getGroupFile(dictData, self)
 
     def initFileTableCallBack(self, files):
         self.fileTable.setRowCount(0)
         self.fileTable.clearContents()
         for file in files:
-            self.addTableColumn(file.get("path"), file.get("uploader"), file.get("uploadtime"), file.get("times"))
-                              
-
+            self.addTableColumn(file.get("path"), file.get(
+                "uploader"), file.get("uploadtime"), file.get("times"))
 
     def uploadFiles(self):
         FileNames, type = QFileDialog.getOpenFileNames(
@@ -1010,7 +1075,8 @@ class GroupFile(QObject):
         print(FileNames)
 
         for filepath in FileNames:
-            path = self.client.filetrans.copyFileIntoTemp(filepath, groupid = self.groupAccount)
+            path = self.client.filetrans.copyFileIntoTemp(
+                filepath, groupid=self.groupAccount)
             self.client.filetrans.putFilePath(path)
 
             dataDic = dict(msgType=Protocol.SEND_GROUP_FILE,
@@ -1018,21 +1084,25 @@ class GroupFile(QObject):
             self.client.sendGroupFile(dataDic, self)
 
     def uploadCallBack(self, file):
-        self.addTableColumn(file.get("path"), file.get("uploader"), file.get("uploadtime"), file.get("times"))
+        self.addTableColumn(file.get("path"), file.get(
+            "uploader"), file.get("uploadtime"), file.get("times"))
 
     def downloadFiles(self):
         file_list = []
         for i in range(self.fileTable.rowCount()):
-            if self.fileTable.cellWidget(i,0).findChild(QCheckBox, "checkbox").isChecked():
-                file_list.append(self.fileTable.cellWidget(i,1).findChild(QLabel, "pathLabel").text())
-        
-        dataDict = dict(msgType = Protocol.DOWNLOAD_GROUP_FILE, files = file_list, groupid = self.groupAccount)
+            if self.fileTable.cellWidget(i, 0).findChild(QCheckBox, "checkbox").isChecked():
+                filePath = self.fileTable.cellWidget(
+                    i, 1).findChild(QLabel, "pathLabel").text()
+                self.client.getFile(filePath)
+                WaitFileThreading(self.client, self.fileReceiveSignal,
+                                  filePath, self.fileTable.cellWidget(i, 1).findChild(QProgressBar, "fileProcessBar"), form=MessageFormat.FILE)
+                file_list.append(filePath)
+
+        dataDict = dict(msgType=Protocol.DOWNLOAD_GROUP_FILE,
+                        files=file_list, groupid=self.groupAccount)
         self.client.downloadGroupFile(dataDict)
 
-        for file in file_list:
-            self.client.getFile(file)
-            WaitFileThreading(self.client, self.fileReceiveSignal,
-                              file, self.fileTable.cellWidget(i,1).findChild(QProgressBar, "fileProcessBar"), form=MessageFormat.FILE)
+        #for file in file_list:
 
     def fileReceiving(self, path, process, processBar):
         processBar.setValue(int(process*100))
@@ -1052,7 +1122,6 @@ class GroupFile(QObject):
         c0_widget = QWidget()
         c0_widget.setLayout(c0_layout)
 
-
         realPath = QtWidgets.QLabel(filepath)
         realPath.setObjectName("realPath")
 
@@ -1070,11 +1139,88 @@ class GroupFile(QObject):
         c1_widget = QWidget()
         c1_widget.setLayout(c1_layout)
 
-        self.fileTable.setCellWidget(row,0,c0_widget)
-        self.fileTable.setCellWidget(row,1,c1_widget)
-        self.fileTable.setItem(row,2,QTableWidgetItem(uploader))
-        self.fileTable.setItem(row,3,QTableWidgetItem(uploadtime))
-        self.fileTable.setItem(row,4,QTableWidgetItem(str(times)))
+        self.fileTable.setCellWidget(row, 0, c0_widget)
+        self.fileTable.setCellWidget(row, 1, c1_widget)
+        self.fileTable.setItem(row, 2, QTableWidgetItem(uploader))
+        self.fileTable.setItem(row, 3, QTableWidgetItem(uploadtime))
+        self.fileTable.setItem(row, 4, QTableWidgetItem(str(times)))
 
         self.fileTable.setRowHeight(row, 50)
 
+
+class AdminWindow(QObject):
+    userLoginSignal = QtCore.pyqtSignal(dict)
+    userLogoutSignal = QtCore.pyqtSignal(dict)
+    adminLoginSignal = QtCore.pyqtSignal(dict)
+
+    def __init__(self, form, msg, client):
+        super(AdminWindow, self).__init__()
+        self.form = form
+        self.client = client
+        self.client.setAdminClass(self)
+        self.initComponent()
+        self.initEvent()
+
+    def initComponent(self):
+        self.statusTextEdit = self.form.findChild(QTextEdit, "statusTextEdit")
+        self.usersList = self.form.findChild(QListWidget, "usersList")
+        self.timeLabel = self.form.findChild(QLabel, "timeLabel")
+        self.forcedOfflineBtn = self.form.findChild(
+            QPushButton, "forcedOfflineBtn")
+        self.Timer = QTimer()  # 自定义QTimer类
+
+        self.timeLabel.setText(self.getCurrentTime(0))  # 设置timeLabel控件显示的内容
+        self.Timer.start(1000)  # 每1s运行一次
+        self.Timer.timeout.connect(self.updateTime)  # 与updateTime函数连接
+
+    def initEvent(self):
+        self.userLoginSignal.connect(self.userLoginEvent)
+        self.userLogoutSignal.connect(self.userLogoutEvent)
+        self.adminLoginSignal.connect(self.initAdminListCallBack)
+        self.forcedOfflineBtn.clicked.connect(lambda: self.forcedOffline())
+
+    def forcedOffline(self):
+        self.client.adminForcedOffline()
+
+    def userLoginEvent(self, dict):
+        self.appendText(dict.get("account"), "blue", "已登录")
+        self.appendListItem(dict.get("account"))
+
+    def userLogoutEvent(self, dict):
+        self.appendText(dict.get("account"), "blue", "已退出")
+        if self.usersList.count()>0:
+            for i in range(self.usersList.count()-1,-1,-1):
+                item = self.usersList.item(i)
+                if item.account == dict.get("account"):
+                   self.usersList.removeItemWidget(self.usersList.takeItem(i))
+
+    def appendText(self, *args):
+        user = args[0]
+        color = args[1]
+        msg = args[2]
+        html = '<div> <font color="green">%s   </font><font color="black"> %s  </font> <font color=%s>%s</font></div>'
+        self.statusTextEdit.append(
+            html % (self.getCurrentTime(1), user, color, msg))
+
+    def initAdminListCallBack(self, dict):
+        for account in dict.get("accounts"):
+            self.appendListItem(account)
+
+    def getCurrentTime(self, type):
+        if type:
+            return datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d %H:%M:%S')
+        else:
+            return datetime.datetime.strftime(datetime.datetime.now(), '%Y年%m月%d日  %H时%M分%S秒')
+
+    def updateTime(self):
+        self.timeLabel.setText(self.getCurrentTime(0))  # 设置timeLabel控件显示的内容
+
+    def appendListItem(self, account):
+        item = SubUnit.AdminListItem(
+            account, self.client, None)  # 创建QListWidgetItem对象
+        item.setSizeHint(QSize(200, 40))  # 设置QListWidgetItem大小
+        widget = item.getItemWidget()  # 调用上面的函数获取对应
+
+        self.usersList.addItem(item)  # 添加item
+        self.usersList.setItemWidget(
+            item, widget)  # 为item设置widget

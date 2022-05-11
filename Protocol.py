@@ -26,6 +26,7 @@ class Protocol:
     SENDGROUPMESSAGE = 17
     GETGROUPMESSAGERECORD = 18
     CLOSE_GROUP_WINDOW = 19
+    GET_GROUP_MEMBERS = 21
     DISMISS_GROUP = 22
     ADD_GROUP = 23
     REQUEST_FILE = 24
@@ -33,6 +34,7 @@ class Protocol:
     SEND_GROUP_FILE = 26
     GET_GROUP_FILE = 27
     DOWNLOAD_GROUP_FILE = 28
+    SAVE_PROFILE = 31
 
 
 class MessageFormat:

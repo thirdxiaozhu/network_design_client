@@ -53,6 +53,7 @@ class Ui_MainWindow(object):
         sizePolicy.setHeightForWidth(self.passwordEdit.sizePolicy().hasHeightForWidth())
         self.passwordEdit.setSizePolicy(sizePolicy)
         self.passwordEdit.setText("")
+        self.passwordEdit.setEchoMode(QtWidgets.QLineEdit.Password)
         self.passwordEdit.setObjectName("passwordEdit")
         self.horizontalLayout_5.addWidget(self.passwordEdit)
         self.label_3 = QtWidgets.QLabel(self.horizontalLayoutWidget)
@@ -96,7 +97,9 @@ class Ui_MainWindow(object):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
         self.headsculLabel.setText(_translate("MainWindow", "image"))
+        self.accountEdit.setPlaceholderText(_translate("MainWindow", "账号"))
         self.registButton.setText(_translate("MainWindow", "注册账号"))
+        self.passwordEdit.setPlaceholderText(_translate("MainWindow", "密码"))
         self.label_3.setText(_translate("MainWindow", "找回密码"))
         self.savePasswordBox.setText(_translate("MainWindow", "记住密码"))
         self.autoLoginBox.setText(_translate("MainWindow", "自动登录"))

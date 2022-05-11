@@ -24,6 +24,7 @@ class Client:
         while True:
             # epoll 进行 fd 扫描的地方 -- 未指定超时时间则为阻塞等待
             epoll_list = self.epoll_fd.poll()
+            print(epoll_list)
             for fd, events in epoll_list:
                 print(fd, "===>", events)
                 # 若为监听 fd 被激活
@@ -63,7 +64,7 @@ class Client:
         pass
 
     def handleReceived(self, datas):
-        print(datas,type(datas))
+        print(datas, type(datas))
         #防止粘包（多个json串在一个字符串里）
         dec = json.JSONDecoder()
         pos = 0
@@ -91,6 +92,10 @@ class Client:
                 27: self.getGroupFileEvent,
                 28: self.downloadGroupFileEvent,
                 29: self.groupLogin,
+                30: self.adminUserLoginMessage,
+                31: self.saveProfileEvent,
+                32: self.initAdminListEvent,
+                33: self.adminUserLogoutMessage,
             }
 
             method = numbers.get(dict.get("msgType"))
@@ -108,7 +113,9 @@ class Client:
         self.loginEvent(json.loads(dict))
 
     def loginEvent(self, dict):
+        self.usertype = dict.get("type")
         self.ownerAccount = dict.get("account")
+        print(dict)
         self.loginClass.startUpFriendList.emit(dict)
 
     def registFileNo(self):
@@ -117,7 +124,6 @@ class Client:
                 self.p.fileno(), select.EPOLLIN | select.EPOLLERR | select.EPOLLHUP)
         except Exception as e:
             print(e)
-
 
     def messageRecordEvent(self, dict):
         if dict.get("code") == 1000:
@@ -170,6 +176,11 @@ class Client:
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
+    def getGroupMembers(self, data):
+        self.datalist.put(self.jsonProcessing(data))
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
     def closeChatWindow(self, data):
         target = data.get("target")
         if data.get("msgType") == Protocol.Protocol.closeFriendWindow:
@@ -189,8 +200,8 @@ class Client:
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
-
     def registConnection(self, data):
+        self.p = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.p.connect(('49.232.147.37', 8080))
         self.p.send(self.jsonProcessing(data).encode("utf-8"))
         msg = self.p.recv(1024)
@@ -244,7 +255,11 @@ class Client:
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
     def deleteGroupEvent(self, data):
-        self.friendListClass.deleteGroupSignal.emit(data)
+        if data.get("account") == self.friendListClass.ownerInfo.get("account"):
+            self.friendListClass.deleteGroupSignal.emit(data)
+        else:
+            self.groupChatClasses.get(
+                data.get("groupid")).removeMemberSignal.emit()
 
     def dismissGroup(self, data):
         self.datalist.put(self.jsonProcessing(data))
@@ -277,13 +292,12 @@ class Client:
         else:
             QMessageBox.warning(None, "警告",
                                 "修改失败", QMessageBox.Yes)
-                            
+
     def getFile(self, filepath):
         dictData = dict(msgType=Protocol.Protocol.GETFILE, filepath=filepath)
         self.datalist.put(self.jsonProcessing(dictData))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
-
 
     def setGroup(self, dict, setgroupclass):
         self.setGroupClass = setgroupclass
@@ -309,10 +323,6 @@ class Client:
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
 
     def sendGroupFile(self, dict, groupFileClass):
-        target = dict.get("groupid")
-        #if not self.groupFileClasses.__contains__(target):
-        #    self.groupFileClasses[target] = groupFileClass
-
         self.datalist.put(self.jsonProcessing(dict))
         self.epoll_fd.modify(
             self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
@@ -355,6 +365,42 @@ class Client:
                 if item.member_account == dict.get("account"):
                     item.changeLoginState(dict.get("flag"))
 
+    def saveProfile(self, dict, profileClass):
+        self.profileClass = profileClass
+        self.datalist.put(self.jsonProcessing(dict))
+        self.epoll_fd.modify(
+            self.p.fileno(), select.EPOLLIN | select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def saveProfileEvent(self, dict):
+        self.profileClass.resultSignal.emit(dict.get("code"))
+        if dict.get("code") == 1000:
+            self.friendListClass.changeOwnInfo(nickname=dict.get(
+                "nickname"), signature=dict.get("signature"))
+            #QMessageBox.information(None, "成功",
+            #                        "修改成功", QMessageBox.Yes)
+        else:
+            QMessageBox.warning(None, "警告",
+                                "修改失败", QMessageBox.Yes)
+
+    def setAdminClass(self, adminClass):
+        self.adminClass = adminClass
+
+    def adminUserLoginMessage(self, dict):
+        if self.usertype:
+            self.adminClass.userLoginSignal.emit(dict)
+
+    def adminUserLogoutMessage(self, dict):
+        if self.usertype:
+            self.adminClass.userLogoutSignal.emit(dict)
+
+    def adminForcedOffline(self):
+        self.datalist.put(self.jsonProcessing(
+            {"nihao": "fuckyou!!!!!!!!!!!!!!!!"}))
+        self.epoll_fd.modify(self.p.fileno(), select.EPOLLIN |
+                             select.EPOLLOUT | select.EPOLLERR | select.EPOLLHUP)
+
+    def initAdminListEvent(self, dict):
+        self.adminClass.adminLoginSignal.emit(dict)       
 
 
     def __del__(self):

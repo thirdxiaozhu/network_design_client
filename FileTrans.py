@@ -52,7 +52,7 @@ class FileSocket:
                 # 将分批次传输的二进制流依次写入到文件
                 while not recvd_size == filesize:
                     if filesize - recvd_size > 1024:
-                        data = self.clientSocket.recv(8192)
+                        data = self.clientSocket.recv(1024)
                         recvd_size += len(data)
                     else:
                         data = self.clientSocket.recv(filesize - recvd_size)
